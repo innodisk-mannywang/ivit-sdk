@@ -1,0 +1,28 @@
+# iVIT 2.0 SDK Dependencies
+
+# Core ML Framework
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Computer Vision
+opencv-python>=4.8.0
+Pillow>=9.0.0
+
+# Object Detection (YOLOv8)
+ultralytics>=8.0.0
+
+# Data Processing
+numpy>=1.21.0
+pandas>=1.5.0
+
+# Visualization
+matplotlib>=3.5.0
+
+# Progress Bars and Logging
+tqdm>=4.64.0
+
+# Configuration and Utils
+PyYAML>=6.0
+
+# Development Tools (optional)
+pytest>=7.0.0
