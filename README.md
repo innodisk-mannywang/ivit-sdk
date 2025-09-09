@@ -95,22 +95,80 @@ python examples/beginner/segmentation_training.py --data_path /path/to/yolo/data
 python examples/beginner/custom_training.py --data_path /path/to/dataset --device 0,1 --epochs 50 --num_classes 10
 ```
 
-### ⚡ 進階範例 - 智能推薦
+### ⚡ 進階範例 - 智能推薦系統
+
+#### 🧠 智能推薦系統功能
+
+智能推薦系統會自動分析您的資料集並推薦最佳訓練參數，包括：
+- **模型選擇**: 根據資料集大小和複雜度推薦最適合的模型
+- **超參數調優**: 自動推薦學習率、批次大小、訓練輪數等
+- **資料增強策略**: 提供針對性的資料增強建議
+- **性能優化**: 基於資料集特性提供專業建議
+
+#### 🚀 快速開始
+
+**1. 創建測試資料集**
+```bash
+python create_test_data.py
+```
+
+**2. 執行智能推薦範例**
+
+**方式一：互動模式（推薦新手）**
+```bash
+cd examples/advanced
+python3 smart_recommendation_example.py
+```
+
+**方式二：命令行參數模式（推薦進階用戶）**
+```bash
+# 分類任務
+python3 smart_recommendation_example.py --task classification --data_path /path/to/dataset
+
+# 偵測任務
+python3 smart_recommendation_example.py --task detection --data_path /path/to/data.yaml
+
+# 查看幫助
+python3 smart_recommendation_example.py --help
+```
+
+#### 💻 程式碼使用方式
 
 ```python
 from ivit.utils.dataset_analyzer import DatasetAnalyzer
 from ivit.utils.smart_recommendation import SmartRecommendationEngine
 
-# 自動分析資料集並推薦最佳參數
+# 分析資料集
 analyzer = DatasetAnalyzer()
 stats = analyzer.analyze_classification_dataset("path/to/data")
 
+# 獲取智能推薦
 recommender = SmartRecommendationEngine() 
 recommendations = recommender.get_recommendations('classification', stats)
 
 print(f"推薦模型: {recommendations['model']}")
 print(f"推薦學習率: {recommendations['learning_rate']}")
+print(f"推薦批次大小: {recommendations['batch_size']}")
+print(f"推薦訓練輪數: {recommendations['epochs']}")
 ```
+
+#### 📊 支援的任務類型
+
+| 任務類型 | 資料格式 | 支援模型 | 自動分析 |
+|---------|----------|----------|----------|
+| **分類** | ImageFolder | ResNet, EfficientNet, MobileNet, ViT | ✅ |
+| **偵測** | YOLO | YOLOv8 系列 | ✅ |
+| **分割** | YOLO | YOLOv8-seg 系列 | ✅ |
+
+#### 🎯 推薦結果說明
+
+智能推薦系統會提供：
+- **模型架構**: 根據資料集大小和複雜度選擇
+- **學習率**: 基於資料集特性優化
+- **批次大小**: 考慮GPU記憶體和圖片解析度
+- **訓練輪數**: 根據資料集大小調整
+- **資料增強**: 針對性的增強策略
+- **推薦原因**: 詳細解釋每個推薦的依據
 
 ## 🎨 測試資料生成
 

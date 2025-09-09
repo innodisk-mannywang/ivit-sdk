@@ -169,6 +169,20 @@ class DatasetAnalyzer:
 
         return stats
 
+    def analyze_classification_dataset(self, dataset_path: str) -> Dict[str, Any]:
+        """
+        Analyze classification dataset and return statistics.
+        This is an alias for extract_statistics for backward compatibility.
+        """
+        return self.extract_statistics(dataset_path)
+
+    def analyze_yolo_dataset(self, data_yaml_path: str) -> Dict[str, Any]:
+        """
+        Analyze YOLO dataset and return statistics.
+        This is an alias for extract_detection_statistics for backward compatibility.
+        """
+        return self.extract_detection_statistics(data_yaml_path)
+
     def extract_detection_statistics(self, dataset_path: str) -> Dict[str, Any]:
         """Extract statistics from a YOLO detection dataset."""
         dataset_path = Path(dataset_path)
@@ -199,21 +213,65 @@ class DatasetAnalyzer:
         data_yaml_path = dataset_path / 'data.yaml'
         if not data_yaml_path.exists():
             print("❌ No data.yaml found. Analyzing directory structure...")
+        else:
+            # Load data.yaml to get correct paths
+            try:
+                import yaml
+                with open(data_yaml_path, 'r') as f:
+                    data_config = yaml.safe_load(f)
+                
+                # Get class information
+                stats['num_classes'] = data_config.get('nc', 0)
+                class_names = data_config.get('names', [])
+                if isinstance(class_names, list):
+                    stats['class_distribution'] = {i: name for i, name in enumerate(class_names)}
+                
+                print(f"✅ Loaded data.yaml: {stats['num_classes']} classes")
+                print(f"   Classes: {class_names}")
+                
+            except Exception as e:
+                print(f"⚠️  Could not load data.yaml: {e}")
 
-        # Analyze images and labels
+        # Analyze images and labels - try both directory structures
         splits = ['train', 'val', 'test']
         all_image_files = []
         all_label_files = []
 
         for split in splits:
-            img_dir = dataset_path / 'images' / split
-            label_dir = dataset_path / 'labels' / split
+            # Try structure 1: dataset/images/split/ and dataset/labels/split/
+            img_dir1 = dataset_path / 'images' / split
+            label_dir1 = dataset_path / 'labels' / split
+            
+            # Try structure 2: dataset/split/images/ and dataset/split/labels/
+            img_dir2 = dataset_path / split / 'images'
+            label_dir2 = dataset_path / split / 'labels'
+            
+            # Try structure 3: dataset/split/ (images and labels in same directory)
+            img_dir3 = dataset_path / split
+            label_dir3 = dataset_path / split
 
-            if img_dir.exists():
+            # Check which structure exists
+            img_dir = None
+            label_dir = None
+            
+            if img_dir1.exists():
+                img_dir = img_dir1
+                label_dir = label_dir1
+                print(f"📁 Found structure 1: {img_dir}")
+            elif img_dir2.exists():
+                img_dir = img_dir2
+                label_dir = label_dir2
+                print(f"📁 Found structure 2: {img_dir}")
+            elif img_dir3.exists():
+                img_dir = img_dir3
+                label_dir = img_dir3
+                print(f"📁 Found structure 3: {img_dir}")
+
+            if img_dir and img_dir.exists():
                 for ext in ['.jpg', '.jpeg', '.png']:
                     all_image_files.extend(list(img_dir.glob(f'*{ext}')))
 
-            if label_dir.exists():
+            if label_dir and label_dir.exists():
                 all_label_files.extend(list(label_dir.glob('*.txt')))
 
         stats['total_images'] = len(all_image_files)

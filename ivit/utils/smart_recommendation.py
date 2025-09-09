@@ -16,33 +16,43 @@ class SmartRecommendationEngine:
         """Initialize SmartRecommendationEngine."""
         print("🧠 SmartRecommendationEngine initialized")
 
-    def get_recommendations(self, dataset_stats: Dict[str, Any]) -> Dict[str, Any]:
+    def get_recommendations(self, task_type: str, dataset_stats: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generate comprehensive recommendations for classification tasks.
+        Generate comprehensive recommendations for different task types.
 
         Args:
+            task_type: Type of task ('classification', 'detection', 'segmentation')
             dataset_stats: Statistics from DatasetAnalyzer
 
         Returns:
             Dictionary containing recommendations
         """
-        print("🔍 Generating intelligent recommendations...")
+        print(f"🔍 Generating intelligent recommendations for {task_type}...")
 
-        recommendations = {
-            'model': self._recommend_classification_model(dataset_stats),
-            'learning_rate': self._recommend_learning_rate(dataset_stats),
-            'batch_size': self._recommend_batch_size(dataset_stats),
-            'epochs': self._recommend_epochs(dataset_stats),
-            'optimizer': self._recommend_optimizer(dataset_stats),
-            'data_augmentation': self._recommend_augmentation(dataset_stats),
-            'regularization': self._recommend_regularization(dataset_stats),
-            'reasoning': {}
-        }
+        if task_type == 'classification':
+            recommendations = {
+                'model': self._recommend_classification_model(dataset_stats),
+                'learning_rate': self._recommend_learning_rate(dataset_stats),
+                'batch_size': self._recommend_batch_size(dataset_stats),
+                'epochs': self._recommend_epochs(dataset_stats),
+                'optimizer': self._recommend_optimizer(dataset_stats),
+                'data_augmentation': self._recommend_augmentation(dataset_stats),
+                'regularization': self._recommend_regularization(dataset_stats),
+                'reasoning': {}
+            }
+            # Add reasoning for each recommendation
+            recommendations['reasoning'] = self._generate_reasoning(dataset_stats, recommendations)
+            
+        elif task_type == 'detection':
+            recommendations = self.get_detection_recommendations(dataset_stats)
+            
+        elif task_type == 'segmentation':
+            recommendations = self.get_segmentation_recommendations(dataset_stats)
+            
+        else:
+            raise ValueError(f"Unsupported task type: {task_type}")
 
-        # Add reasoning for each recommendation
-        recommendations['reasoning'] = self._generate_reasoning(dataset_stats, recommendations)
-
-        print(f"✅ Recommendations generated:")
+        print(f"✅ {task_type.title()} recommendations generated:")
         print(f"   Model: {recommendations['model']}")
         print(f"   Learning rate: {recommendations['learning_rate']}")
         print(f"   Batch size: {recommendations['batch_size']}")
