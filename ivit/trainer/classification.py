@@ -5,7 +5,7 @@ Image classification training with popular CNN architectures.
 """
 
 import os
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
 
 import torch
@@ -280,3 +280,67 @@ class ClassificationTrainer(BaseTrainer):
             print(f"📝 Recommended batch size: {recommended_batch}")
 
         print("✅ Recommendations applied!")
+
+    def train(self, 
+              dataset_path: str,
+              epochs: int = 100,
+              batch_size: int = 32,
+              validation_split: float = 0.2,
+              save_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Main training loop with automatic class_names.json generation.
+        
+        Args:
+            dataset_path: Path to the dataset
+            epochs: Number of training epochs
+            batch_size: Batch size for training
+            validation_split: Fraction of data to use for validation
+            save_path: Path to save the trained model
+            
+        Returns:
+            Training history and final metrics
+        """
+        # 先載入資料集以獲取類別名稱
+        print("🔍 載入資料集以獲取類別資訊...")
+        temp_dataset = ClassificationDataset(dataset_path, split='train')
+        class_names = temp_dataset.classes
+        self.task_config._detected_classes = len(class_names)
+        
+        print(f"✅ 檢測到 {len(class_names)} 個類別:")
+        for i, class_name in enumerate(class_names):
+            print(f"   {i}: {class_name}")
+        
+        # 執行標準訓練流程
+        results = super().train(
+            dataset_path=dataset_path,
+            epochs=epochs,
+            batch_size=batch_size,
+            validation_split=validation_split,
+            save_path=save_path
+        )
+        
+        # 自動產生 class_names.json
+        if save_path:
+            self._save_class_names(save_path, class_names)
+        
+        return results
+
+    def _save_class_names(self, model_path: str, class_names: List[str]):
+        """Save class names to JSON file alongside the model."""
+        import json
+        
+        # 創建 class_names.json 檔案路徑
+        model_dir = os.path.dirname(model_path)
+        model_name = os.path.splitext(os.path.basename(model_path))[0]
+        class_names_path = os.path.join(model_dir, f"{model_name}_class_names.json")
+        
+        # 保存類別名稱
+        try:
+            with open(class_names_path, 'w', encoding='utf-8') as f:
+                json.dump(class_names, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ 類別名稱已保存至: {class_names_path}")
+            print(f"   包含 {len(class_names)} 個類別")
+            
+        except Exception as e:
+            print(f"⚠️ 保存類別名稱失敗: {e}")

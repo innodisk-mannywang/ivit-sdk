@@ -32,9 +32,9 @@
 ```bash
 # 克隆專案
 git clone <repository-url>
-cd ivit_2.0_sdk
+cd ivit-sdk
 
-# 建立虛擬環境 (推薦)
+# 建立虛擬環境
 python3 -m venv ivit_env
 source ivit_env/bin/activate
 
@@ -109,7 +109,7 @@ python examples/beginner/custom_training.py --data_path /path/to/dataset --devic
 
 **1. 創建測試資料集**
 ```bash
-python create_test_data.py
+python examples/create_test_data.py
 ```
 
 **2. 執行智能推薦範例**

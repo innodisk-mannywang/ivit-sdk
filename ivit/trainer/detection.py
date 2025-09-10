@@ -103,6 +103,16 @@ class YOLOWrapper(nn.Module):
     def eval(self):
         """Set evaluation mode."""
         return self.train(False)
+    
+    def loss(self, batch, preds):
+        """Loss function for YOLO model - delegate to underlying model."""
+        # Handle DDP wrapper
+        if hasattr(self.yolo_model, 'module'):
+            # DDP wrapped model
+            return self.yolo_model.module.loss(batch, preds)
+        else:
+            # Regular model
+            return self.yolo_model.loss(batch, preds)
 
 
 class DetectionTrainer(BaseTrainer):
@@ -157,8 +167,9 @@ class DetectionTrainer(BaseTrainer):
         # Get YOLO model from config
         self.yolo_model = self.task_config.get_model()
 
-        # Wrap YOLO model for compatibility
-        self.model = YOLOWrapper(self.yolo_model)
+        # For YOLO, we don't wrap it - let YOLO handle its own training
+        # The YOLO model will be used directly in the train() method
+        self.model = self.yolo_model
 
         print(f"✅ YOLO model initialized: {self.model_name}")
 
@@ -195,6 +206,19 @@ class DetectionTrainer(BaseTrainer):
                     else:
                         ok = False
                         break
+            # 如果找到任何有效的分割，就認為格式正確
+            if ok:
+                # 檢查是否至少有一個訓練分割和一個驗證分割
+                has_train = (dataset_path / 'train').exists() and \
+                           (dataset_path / 'train' / 'images').exists() and \
+                           (dataset_path / 'train' / 'labels').exists()
+                has_val = ((dataset_path / 'val').exists() and \
+                          (dataset_path / 'val' / 'images').exists() and \
+                          (dataset_path / 'val' / 'labels').exists()) or \
+                         ((dataset_path / 'valid').exists() and \
+                          (dataset_path / 'valid' / 'images').exists() and \
+                          (dataset_path / 'valid' / 'labels').exists())
+                ok = has_train and has_val
         if not ok:
             print("❌ Dataset directory structure not recognized as YOLO format")
             return False
@@ -207,6 +231,12 @@ class DetectionTrainer(BaseTrainer):
         # 確保 models 目錄存在
         os.makedirs('models', exist_ok=True)
         
+        # 支援多GPU訓練 - YOLOv8 內建 DDP 支援
+        device_config = self._yolo_device_override if self._yolo_device_override else str(self.device)
+        if ',' in str(device_config):
+            print(f"🧩 啟用多GPU訓練: {device_config}")
+            # YOLOv8 支援多GPU，直接傳遞設備列表
+        
         config = {
             'data': str(Path(dataset_path) / 'data.yaml'),
             'epochs': epochs,
@@ -214,8 +244,7 @@ class DetectionTrainer(BaseTrainer):
             'imgsz': self.img_size,
             'lr0': self.task_config.learning_rate,
             'weight_decay': self.task_config.weight_decay,
-            # Prefer raw override like '0,1' if provided; else fallback to torch device string
-            'device': self._yolo_device_override if self._yolo_device_override else (str(self.device)),
+            'device': device_config,
             'project': 'models',  # 直接保存到 models 目錄
             'name': f'detection_{self.model_name}',  # 更簡潔的命名
             'save': True,
@@ -355,6 +384,48 @@ class DetectionTrainer(BaseTrainer):
                 for metric, value in final_metrics.items():
                     print(f"   {metric}: {value:.4f}")
 
+            # Fallback: if multi-GPU returned empty metrics, try reading from save_dir/results.csv
+            try:
+                need_fallback = self._is_rank0() and (final_metrics['map50'] == 0.0 and final_metrics['map50_95'] == 0.0 
+                                  and final_metrics['precision'] == 0.0 and final_metrics['recall'] == 0.0)
+                if need_fallback:
+                    inferred_save_dir = None
+                    # Prefer results.save_dir if available
+                    if 'model_path' in locals() and save_dir:
+                        inferred_save_dir = save_dir
+                    elif hasattr(self.yolo_model, 'trainer') and hasattr(self.yolo_model.trainer, 'save_dir'):
+                        inferred_save_dir = str(self.yolo_model.trainer.save_dir)
+
+                    if inferred_save_dir:
+                        import os
+                        import pandas as pd
+                        csv_path = os.path.join(inferred_save_dir, 'results.csv')
+                        if os.path.exists(csv_path):
+                            df = pd.read_csv(csv_path)
+                            if not df.empty:
+                                last = df.iloc[-1]
+                                # Try multiple keys commonly used by YOLOv8
+                                def get_col(series, keys, default=0.0):
+                                    for k in keys:
+                                        if k in series:
+                                            try:
+                                                return float(series[k])
+                                            except Exception:
+                                                pass
+                                    return default
+
+                                final_metrics['map50'] = get_col(last, ['metrics/mAP50(B)', 'mAP50', 'map50', 'val/mAP50'])
+                                final_metrics['map50_95'] = get_col(last, ['metrics/mAP50-95(B)', 'mAP50-95', 'map50-95', 'val/mAP50-95'])
+                                final_metrics['precision'] = get_col(last, ['metrics/precision(B)', 'precision', 'val/precision'])
+                                final_metrics['recall'] = get_col(last, ['metrics/recall(B)', 'recall', 'val/recall'])
+                                if self._is_rank0():
+                                    print("ℹ️ Metrics were empty from trainer; populated from results.csv:")
+                                    for metric, value in final_metrics.items():
+                                        print(f"   {metric}: {value:.4f}")
+            except Exception as e:
+                if self._is_rank0():
+                    print(f"⚠️ Failed to read fallback metrics from results.csv: {e}")
+
             return {
                 'yolo_results': results,
                 'final_metrics': final_metrics,
@@ -486,72 +557,3 @@ class DetectionTrainer(BaseTrainer):
 
         print("✅ Detection recommendations applied!")
 
-    def validate_dataset_format(self, dataset_path: str) -> bool:
-        """
-        Validate that the dataset follows the expected YOLO format for detection.
-        
-        Args:
-            dataset_path: Path to the dataset
-            
-        Returns:
-            True if dataset format is valid, False otherwise
-        """
-        dataset_path = Path(dataset_path)
-        
-        # Check if dataset directory exists
-        if not dataset_path.exists():
-            print(f"❌ Dataset directory does not exist: {dataset_path}")
-            return False
-        
-        # Check for required directories
-        required_dirs = ['images', 'labels']
-        for dir_name in required_dirs:
-            dir_path = dataset_path / dir_name
-            if not dir_path.exists():
-                print(f"❌ Missing required directory: {dir_path}")
-                return False
-        
-        # Check for train/val splits in images and labels
-        for split in ['train', 'val']:
-            images_split = dataset_path / 'images' / split
-            labels_split = dataset_path / 'labels' / split
-            
-            if not images_split.exists():
-                print(f"❌ Missing images/{split} directory")
-                return False
-            
-            if not labels_split.exists():
-                print(f"❌ Missing labels/{split} directory")
-                return False
-            
-            # Check if there are any image files
-            image_files = list(images_split.glob('*'))
-            if not image_files:
-                print(f"❌ No image files found in {images_split}")
-                return False
-        
-        # Check for data.yaml
-        data_yaml = dataset_path / 'data.yaml'
-        if not data_yaml.exists():
-            print(f"❌ Missing data.yaml file")
-            return False
-        
-        # Try to read data.yaml
-        try:
-            import yaml
-            with open(data_yaml, 'r') as f:
-                data = yaml.safe_load(f)
-            
-            # Check required fields
-            required_fields = ['train', 'val', 'nc', 'names']
-            for field in required_fields:
-                if field not in data:
-                    print(f"❌ Missing required field '{field}' in data.yaml")
-                    return False
-                    
-        except Exception as e:
-            print(f"❌ Error reading data.yaml: {e}")
-            return False
-        
-        print("✅ Dataset format validation passed")
-        return True

@@ -88,6 +88,13 @@ def run_classification_training(data_path: str, device: str, epochs: int = 50,
         # 顯示模型保存位置
         if os.path.exists(model_save_path):
             print(f"\n💾 模型已保存至: {os.path.abspath(model_save_path)}")
+            
+            # 檢查是否產生了 class_names.json
+            model_name = os.path.splitext(os.path.basename(model_save_path))[0]
+            class_names_path = os.path.join("models", f"{model_name}_class_names.json")
+            if os.path.exists(class_names_path):
+                print(f"📋 類別名稱已保存至: {os.path.abspath(class_names_path)}")
+                print("   您可以在推理時使用此檔案作為 --class_names 參數")
         
         return True
         

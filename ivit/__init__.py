@@ -2,19 +2,19 @@
 iVIT 2.0 SDK Version Information
 """
 
-__version__ = "2.0.0"
+__version__ = "2.0.2"
 __author__ = "iVIT Development Team"
-__email__ = "support@ivit.ai"
+__email__ = "mannywang@innodisk.com"
 __description__ = "Advanced AI Vision Training and Deployment SDK"
-__url__ = "https://github.com/your-org/ivit-2.0-sdk"
+__url__ = "https://github.com/innodisk-mannywang/ivit-sdk"
 
 # Release information
-RELEASE_DATE = "2024-01-01"
+RELEASE_DATE = "2025-09-10"
 VERSION_INFO = {
     "major": 2,
     "minor": 0, 
-    "patch": 0,
-    "release": "stable"
+    "patch": 2,
+    "release": "beta"
 }
 
 # Feature support matrix
@@ -23,7 +23,8 @@ FEATURES = {
     "detection": True,
     "segmentation": True,
     "smart_recommendation": True,
-    "multi_gpu": False,  # Coming soon
+    "inference": True,
+    "multi_gpu": True,
     "deployment": False, # Coming soon
 }
 
