@@ -17,7 +17,10 @@ from ivit.trainer.classification import ClassificationTrainer
 def run_classification_training(data_path: str, device: str, epochs: int = 50, 
                               batch_size: int = 16, learning_rate: float = 0.01,
                               model_name: str = 'resnet18', img_size: int = 224,
-                              num_classes: int = 3):
+                              num_classes: int = 3,
+                              progress_log_path: str = None,
+                              print_callbacks: bool = False,
+                              verbose: bool = True):
     """
     執行分類訓練
     
@@ -32,17 +35,18 @@ def run_classification_training(data_path: str, device: str, epochs: int = 50,
         num_classes: 類別數量
     """
     
-    print("🚀 iVIT 2.0 Classification 訓練")
-    print("=" * 50)
-    print(f"📁 資料路徑: {data_path}")
-    print(f"🔧 設備: {device}")
-    print(f"📊 模型: {model_name}")
-    print(f"📐 圖片尺寸: {img_size}")
-    print(f"🏷️ 類別數量: {num_classes}")
-    print(f"🔄 Epochs: {epochs}")
-    print(f"📦 批次大小: {batch_size}")
-    print(f"📈 學習率: {learning_rate}")
-    print("=" * 50)
+    if verbose:
+        print("🚀 iVIT 2.0 Classification 訓練")
+        print("=" * 50)
+        print(f"📁 資料路徑: {data_path}")
+        print(f"🔧 設備: {device}")
+        print(f"📊 模型: {model_name}")
+        print(f"📐 圖片尺寸: {img_size}")
+        print(f"🏷️ 類別數量: {num_classes}")
+        print(f"🔄 Epochs: {epochs}")
+        print(f"📦 批次大小: {batch_size}")
+        print(f"📈 學習率: {learning_rate}")
+        print("=" * 50)
     
     # 創建訓練器
     trainer = ClassificationTrainer(
@@ -50,16 +54,20 @@ def run_classification_training(data_path: str, device: str, epochs: int = 50,
         img_size=img_size,
         num_classes=num_classes,
         learning_rate=learning_rate,
-        device=device
+        device=device,
+        verbose=verbose
     )
     
     # 驗證資料集
-    print("\n📋 驗證資料集格式...")
+    if verbose:
+        print("\n📋 驗證資料集格式...")
     if not os.path.exists(data_path):
-        print(f"❌ 資料集路徑不存在: {data_path}")
+        if verbose:
+            print(f"❌ 資料集路徑不存在: {data_path}")
         return False
     
-    print("✅ 資料集路徑存在")
+    if verbose:
+        print("✅ 資料集路徑存在")
     
     # 創建模型保存路徑
     from datetime import datetime
@@ -69,37 +77,89 @@ def run_classification_training(data_path: str, device: str, epochs: int = 50,
     # 確保模型目錄存在
     os.makedirs("models", exist_ok=True)
     
+    # 準備 callbacks（選擇性列印）
+    callbacks = None
+    if print_callbacks:
+        def _on_epoch_end(payload):
+            print("[on_epoch_end]", payload.get('val_metrics') or payload.get('metrics'))
+        
+        def _on_batch_end(payload):
+            import time
+            epoch = payload.get('epoch', 0)
+            batch_idx = payload.get('batch_index', 0)
+            progress = payload.get('progress', f"{batch_idx + 1}")  # 使用當下批次數
+            elapsed_time = payload.get('elapsed_time', 0)
+            iter_per_sec = payload.get('iter_per_sec', 0)
+            loss = payload.get('loss', 0)
+            avg_loss = payload.get('avg_loss', 0)
+            accuracy = payload.get('accuracy', 0)
+            
+            # 格式化時間顯示
+            def format_time(seconds):
+                if seconds < 60:
+                    return f"{seconds:.1f}s"
+                elif seconds < 3600:
+                    return f"{seconds/60:.1f}m"
+                else:
+                    return f"{seconds/3600:.1f}h"
+            
+            # 回報規則：每個 batch 都回報
+            should_report = True
+            
+            if should_report:
+                info = {
+                    'epoch': epoch,
+                    'batch': f"{batch_idx + 1}",  # 只顯示當前批次數
+                    'progress': progress,  # 使用當下值
+                    'loss': f"{loss:.4f}",
+                    'avg_loss': f"{avg_loss:.4f}",
+                    'accuracy': f"{accuracy:.4f}",
+                    'elapsed': format_time(elapsed_time),
+                    'speed': f"{iter_per_sec:.1f} it/s"
+                }
+                print("[on_batch_end]", info)
+        
+        callbacks = {
+            'on_epoch_end': [_on_epoch_end],
+            'on_batch_end': [_on_batch_end]
+        }
+
     # 開始訓練
-    print("\n🎯 開始訓練...")
+    if verbose:
+        print("\n🎯 開始訓練...")
     try:
         results = trainer.train(
             dataset_path=data_path,
             epochs=epochs,
             batch_size=batch_size,
-            save_path=model_save_path
+            save_path=model_save_path,
+            callbacks=callbacks,
+            progress_log_path=progress_log_path
         )
         
-        print("\n🎉 訓練完成！")
-        print("📊 最終結果:")
-        if 'final_metrics' in results:
-            for metric, value in results['final_metrics'].items():
-                print(f"   {metric}: {value:.4f}")
-        
-        # 顯示模型保存位置
-        if os.path.exists(model_save_path):
-            print(f"\n💾 模型已保存至: {os.path.abspath(model_save_path)}")
+        if verbose:
+            print("\n🎉 訓練完成！")
+            print("📊 最終結果:")
+            if 'final_metrics' in results:
+                for metric, value in results['final_metrics'].items():
+                    print(f"   {metric}: {value:.4f}")
             
-            # 檢查是否產生了 class_names.json
-            model_name = os.path.splitext(os.path.basename(model_save_path))[0]
-            class_names_path = os.path.join("models", f"{model_name}_class_names.json")
-            if os.path.exists(class_names_path):
-                print(f"📋 類別名稱已保存至: {os.path.abspath(class_names_path)}")
-                print("   您可以在推理時使用此檔案作為 --class_names 參數")
+            # 顯示模型保存位置
+            if os.path.exists(model_save_path):
+                print(f"\n💾 模型已保存至: {os.path.abspath(model_save_path)}")
+                
+                # 檢查是否產生了 class_names.json
+                model_name_only = os.path.splitext(os.path.basename(model_save_path))[0]
+                class_names_path = os.path.join("models", f"{model_name_only}_class_names.json")
+                if os.path.exists(class_names_path):
+                    print(f"📋 類別名稱已保存至: {os.path.abspath(class_names_path)}")
+                    print("   您可以在推理時使用此檔案作為 --class_names 參數")
         
         return True
         
     except Exception as e:
-        print(f"❌ 訓練失敗: {str(e)}")
+        if verbose:
+            print(f"❌ 訓練失敗: {str(e)}")
         return False
 
 
@@ -122,8 +182,20 @@ def main():
                        help='圖片尺寸')
     parser.add_argument('--num_classes', type=int, default=3,
                        help='類別數量')
+    parser.add_argument('--progress_log_path', type=str, default=None,
+                       help='將訓練事件寫成 JSONL 的檔案路徑')
+    parser.add_argument('--print_callbacks', action='store_true',
+                       help='在終端列印 on_epoch_end 回呼資料')
+    parser.add_argument('--verbose', action='store_true',
+                       help='顯示詳細的訓練進度資訊')
+    parser.add_argument('--quiet', action='store_true',
+                       help='關閉所有標準輸出，只顯示 callback 訊息')
     
     args = parser.parse_args()
+    
+    # 處理 verbose 和 quiet 參數
+    # 預設為 True，除非明確指定 --quiet
+    verbose = not args.quiet
     
     # 執行訓練
     success = run_classification_training(
@@ -134,7 +206,10 @@ def main():
         learning_rate=args.learning_rate,
         model_name=args.model,
         img_size=args.img_size,
-        num_classes=args.num_classes
+        num_classes=args.num_classes,
+        progress_log_path=args.progress_log_path,
+        print_callbacks=args.print_callbacks,
+        verbose=verbose
     )
     
     if success:
@@ -146,3 +221,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

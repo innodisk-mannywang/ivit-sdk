@@ -74,26 +74,138 @@ print("🎉 訓練完成！")
 
 ```bash
 # 統一訓練腳本 - 自動檢測類別數量和圖片尺寸
-python examples/beginner/run_training.py --task classification --data_path /path/to/dataset --device 0,1 --epochs 50
-python examples/beginner/run_training.py --task detection --data_path /path/to/yolo/dataset --device 0,1 --epochs 50
-python examples/beginner/run_training.py --task segmentation --data_path /path/to/yolo/dataset --device 0,1 --epochs 50
+python examples/beginner/run_training.py --task classification --data_path /path/to/dataset --device 0 --epochs 50 --print_callbacks --progress_log_path /tmp/ivit_progress/classification.jsonl --quiet
+python examples/beginner/run_training.py --task detection --data_path /path/to/yolo/dataset --device 0 --epochs 50 --print_callbacks --progress_log_path /tmp/ivit_progress/detection.jsonl --quiet
+python examples/beginner/run_training.py --task segmentation --data_path /path/to/yolo/dataset --device 0 --epochs 50 --print_callbacks --progress_log_path /tmp/ivit_progress/segmentation.jsonl --quiet
 ```
 
 **手動指定參數（進階用戶）：**
 
 ```bash
 # 分類訓練 (需要指定類別數量)
-python examples/beginner/classification_training.py --data_path /path/to/dataset --device 0,1 --epochs 50 --num_classes 10
+python examples/beginner/classification_training.py --data_path /path/to/dataset --device 0,1 --epochs 50 --num_classes 10 --print_callbacks --progress_log_path /tmp/ivit_progress/classification.jsonl
 
 # 偵測訓練 (類別數量從 data.yaml 自動讀取)
-python examples/beginner/detection_training.py --data_path /path/to/yolo/dataset --device 0,1 --epochs 50
+python examples/beginner/detection_training.py --data_path /path/to/yolo/dataset --device 0,1 --epochs 50 --print_callbacks --progress_log_path /tmp/ivit_progress/detection.jsonl --suppress_yolo_logging
 
 # 分割訓練 (類別數量從 data.yaml 自動讀取)
-python examples/beginner/segmentation_training.py --data_path /path/to/yolo/dataset --device 0,1 --epochs 50
+python examples/beginner/segmentation_training.py --data_path /path/to/yolo/dataset --device 0,1 --epochs 50 --print_callbacks --progress_log_path /tmp/ivit_progress/segmentation.jsonl
 
 # 自定義訓練 (需要指定類別數量)
-python examples/beginner/custom_training.py --data_path /path/to/dataset --device 0,1 --epochs 50 --num_classes 10
+python examples/beginner/custom_training.py --data_path /path/to/dataset --device 0,1 --epochs 50 --num_classes 10 --print_callbacks --progress_log_path /tmp/ivit_progress/custom.jsonl
 ```
+
+### 📡 訓練進度串接（Callbacks / JSONL）
+
+你可以在程式中即時接收訓練進度與指標，或將事件寫成 JSONL 檔案以供 UI/服務讀取。
+
+#### 方式一：以 callbacks 即時接收事件（分類為例）
+
+```python
+from ivit.trainer.classification import ClassificationTrainer
+
+def on_train_start(payload):
+    print("[on_train_start]", payload)
+
+def on_batch_end(payload):
+    # payload: {event, epoch, timestamp, batch_index, batch_size, loss, avg_loss}
+    pass
+
+def on_epoch_end(payload):
+    # payload: {event, epoch, timestamp, train_metrics, val_metrics, lr}
+    pass
+
+def on_validate_end(payload):
+    # payload: {event, epoch, timestamp, metrics}
+    pass
+
+def on_train_end(payload):
+    # payload: {event, epoch, timestamp, best_metric, history_length}
+    pass
+
+trainer = ClassificationTrainer(
+    model_name='resnet18',
+    img_size=224,
+    num_classes=10,
+    learning_rate=0.01,
+    device='0'
+)
+
+results = trainer.train(
+    dataset_path='/path/to/dataset',
+    epochs=5,
+    batch_size=16,
+    callbacks={
+        'on_train_start': [on_train_start],
+        'on_batch_end': [on_batch_end],
+        'on_epoch_end': [on_epoch_end],
+        'on_validate_end': [on_validate_end],
+        'on_train_end': [on_train_end]
+    },
+    progress_log_path='/tmp/ivit_progress/training.jsonl'  # 選填：事件將以 JSONL 寫出
+)
+```
+
+#### 方式二：YOLO 偵測 - 事件已橋接 YOLO callbacks
+
+```python
+from ivit.trainer.detection import DetectionTrainer
+
+def on_epoch_end(payload):
+    # 部分 YOLO 指標可能位於 payload['metrics'] 或 payload['val_metrics']
+    print("[on_epoch_end]", payload.get('val_metrics') or payload.get('metrics'))
+
+trainer = DetectionTrainer(
+    model_name='yolov8n.pt',
+    img_size=640,
+    learning_rate=0.01,
+    device='0,1'
+)
+
+results = trainer.train(
+    dataset_path='/path/to/yolo_dataset',  # 需包含 data.yaml 與 images/labels 結構
+    epochs=50,
+    batch_size=16,
+    callbacks={'on_epoch_end': [on_epoch_end]},
+    progress_log_path='/tmp/ivit_progress/detection.jsonl'
+)
+```
+
+#### 關閉 Ultralytics 輸出、只用我們的 callbacks
+
+你也可以關閉 Ultralytics 的訓練日誌，改用我們的 callbacks/JSONL 來輸出你需要的內容：
+
+```python
+from ivit.trainer.detection import DetectionTrainer
+
+def on_epoch_end(payload):
+    print("[on_epoch_end]", payload.get('val_metrics') or payload.get('metrics'))
+
+trainer = DetectionTrainer(model_name='yolov8n.pt', device='0')
+
+results = trainer.train(
+    dataset_path='/path/to/yolo_dataset',
+    epochs=50,
+    batch_size=16,
+    callbacks={'on_epoch_end': [on_epoch_end]},
+    progress_log_path='/tmp/ivit_progress/detection.jsonl',
+    suppress_yolo_logging=True  # 關閉 Ultralytics 輸出
+)
+```
+
+說明：
+- `suppress_yolo_logging=True` 時，Ultralytics 的 `verbose` 會關閉，且其全域 `LOGGER` 等級會被設定為 ERROR。
+- 進度與指標請改用我們在「callbacks / JSONL」機制輸出並串接到你的 UI/服務。
+
+#### 事件名稱（通用）
+- on_train_start
+- on_batch_end
+- on_epoch_end
+- on_validate_end
+- on_train_end
+
+每個事件 payload 至少包含：`event`、`epoch`、`timestamp`，以及該事件相關欄位（如 `loss`、`avg_loss`、`train_metrics`、`val_metrics`、`lr`、`metrics`）。
+
 
 ### ⚡ 進階範例 - 智能推薦系統
 

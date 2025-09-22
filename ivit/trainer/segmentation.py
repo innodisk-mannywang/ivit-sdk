@@ -336,6 +336,7 @@ class SegmentationTrainer(BaseTrainer):
                  learning_rate: float = 0.001,
                  img_size: int = 640,
                  device: str = "auto",
+                 verbose: bool = True,
                  **kwargs):
         """
         Initialize SegmentationTrainer.
@@ -347,6 +348,12 @@ class SegmentationTrainer(BaseTrainer):
             learning_rate: Learning rate for optimizer
             device: Device to use for training
         """
+        # 禁用多張 GPU：若使用者指定超過 1 張 GPU，直接拒絕
+        if isinstance(device, str) and ',' in device:
+            gpu_ids = [x.strip() for x in device.split(',') if x.strip() != '']
+            if len(gpu_ids) > 1:
+                raise ValueError("Segmentation 訓練目前不支援多張 GPU，請改為指定單一卡，例如 --device 0 或 --device 1")
+
         # Create configuration
         config = SegmentationConfig(
             model_name=model_name,
@@ -358,10 +365,11 @@ class SegmentationTrainer(BaseTrainer):
         )
 
         # Initialize base trainer
-        super().__init__(config, device=device)
+        super().__init__(config, device=device, verbose=verbose)
 
         self.model_name = model_name
-        print(f"🎯 SegmentationTrainer initialized with {model_name}")
+        if self.verbose:
+            print(f"🎯 SegmentationTrainer initialized with {model_name}")
 
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """Train for one epoch with segmentation-specific handling."""
@@ -467,7 +475,8 @@ class SegmentationTrainer(BaseTrainer):
         print("✅ Segmentation recommendations applied!")
 
     def train(self, dataset_path: str, epochs: int = 100, batch_size: int = 32, 
-              validation_split: float = 0.2, save_path: Optional[str] = None) -> Dict[str, Any]:
+              validation_split: float = 0.2, save_path: Optional[str] = None, 
+              callbacks: Optional[Dict] = None, progress_log_path: Optional[str] = None) -> Dict[str, Any]:
         """
         Train the segmentation model.
         
@@ -476,14 +485,15 @@ class SegmentationTrainer(BaseTrainer):
         """
         # Check if this is a YOLOv8 model
         if self.model_name.endswith('.pt') and 'yolov8' in self.model_name.lower():
-            return self._train_yolo(dataset_path, epochs, batch_size, save_path)
+            return self._train_yolo(dataset_path, epochs, batch_size, save_path, callbacks)
         else:
             # Use standard PyTorch training
             return super().train(dataset_path, epochs, batch_size, validation_split, save_path)
 
-    def _train_yolo(self, dataset_path: str, epochs: int, batch_size: int, save_path: Optional[str]) -> Dict[str, Any]:
+    def _train_yolo(self, dataset_path: str, epochs: int, batch_size: int, save_path: Optional[str], callbacks: Optional[Dict] = None) -> Dict[str, Any]:
         """Train YOLOv8 segmentation model using ultralytics."""
-        print("🚀 Starting YOLOv8 segmentation training...")
+        if self.verbose:
+            print("🚀 Starting YOLOv8 segmentation training...")
         
         # Get the YOLO model
         yolo_model = self.task_config.get_model()
@@ -499,7 +509,7 @@ class SegmentationTrainer(BaseTrainer):
             'name': f'segmentation_{self.model_name.replace(".pt", "")}',
             'save': True,
             'save_period': 10,
-            'patience': 50,
+            'patience': epochs,  # 設置 patience 為總 epoch 數，避免提前停止
             'lr0': self.task_config.learning_rate,
             'lrf': 0.01,
             'momentum': 0.937,
@@ -518,12 +528,86 @@ class SegmentationTrainer(BaseTrainer):
             'dropout': 0.0,
             'val': True,
             'plots': True,
-            'verbose': True
+            'verbose': self.verbose
         }
         
-        print(f"📊 YOLO training config:")
-        for key, value in yolo_config.items():
-            print(f"   {key}: {value}")
+        if self.verbose:
+            print(f"📊 YOLO training config:")
+            for key, value in yolo_config.items():
+                print(f"   {key}: {value}")
+        
+        # 設置 YOLO 的 logging 控制
+        if not self.verbose:
+            try:
+                import logging
+                from ultralytics.utils import LOGGER
+                LOGGER.setLevel(logging.ERROR)
+                # 禁用 tqdm 進度條
+                import os
+                os.environ['TQDM_DISABLE'] = '1'
+            except Exception:
+                pass
+        
+        # 設置 YOLO callbacks
+        if callbacks:
+            # 手動實現 callback 系統，類似 detection 訓練
+            import time
+            training_start_time = None
+            current_batch = 0
+            
+            def _on_epoch_end(trainer_obj):
+                if 'on_epoch_end' in callbacks:
+                    for callback in callbacks['on_epoch_end']:
+                        payload = {
+                            'val_metrics': getattr(trainer_obj, 'metrics', {}),
+                            'metrics': getattr(trainer_obj, 'metrics', {})
+                        }
+                        callback(payload)
+            
+            def _on_batch_end(trainer_obj):
+                if 'on_batch_end' in callbacks:
+                    nonlocal training_start_time, current_batch
+                    
+                    # 初始化訓練開始時間
+                    if training_start_time is None:
+                        training_start_time = time.time()
+                    
+                    # 更新 batch 計數器
+                    current_batch += 1
+                    
+                    # 計算時間和速度
+                    elapsed_time = time.time() - training_start_time
+                    iter_per_sec = current_batch / elapsed_time if elapsed_time > 0 else 0
+                    
+                    # 格式化時間顯示
+                    def format_time(seconds):
+                        if seconds < 60:
+                            return f"{seconds:.1f}s"
+                        elif seconds < 3600:
+                            return f"{seconds/60:.1f}m"
+                        else:
+                            return f"{seconds/3600:.1f}h"
+                    
+                    # 獲取正確的 epoch 和 batch 資訊
+                    epoch = getattr(trainer_obj, 'epoch', 0)
+                    batch_idx = getattr(trainer_obj, 'batch_idx', 0)
+                    
+                    # 構建 payload
+                    payload = {
+                        'epoch': epoch,
+                        'batch': f"{batch_idx + 1}",  # 使用 YOLO 的 batch_idx
+                        'loss_items': getattr(trainer_obj, 'loss_items', []),
+                        'lr': getattr(trainer_obj, 'lr', 0.0),
+                        'elapsed': format_time(elapsed_time),
+                        'speed': f"{iter_per_sec:.1f} it/s"
+                    }
+                    
+                    for callback in callbacks['on_batch_end']:
+                        callback(payload)
+            
+            # 註冊 callbacks
+            yolo_model.add_callback('on_epoch_end', _on_epoch_end)
+            yolo_model.add_callback('on_batch_end', _on_batch_end)
         
         # Start training
         try:

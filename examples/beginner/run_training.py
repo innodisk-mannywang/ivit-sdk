@@ -93,7 +93,12 @@ def detect_img_size(data_path: str, task_type: str) -> int:
 
 
 def run_training(task_type: str, data_path: str, device: str, epochs: int = 50,
-                batch_size: int = 16, learning_rate: float = 0.01, **kwargs):
+                batch_size: int = 16, learning_rate: float = 0.01,
+                progress_log_path: str = None,
+                print_callbacks: bool = False,
+                suppress_yolo_logging: bool = False,
+                quiet: bool = False,
+                **kwargs):
     """
     執行指定類型的訓練
     
@@ -114,8 +119,7 @@ def run_training(task_type: str, data_path: str, device: str, epochs: int = 50,
     script_map = {
         'classification': script_dir / 'classification_training.py',
         'detection': script_dir / 'detection_training.py',
-        'segmentation': script_dir / 'segmentation_training.py',
-        'custom': script_dir / 'custom_training.py'
+        'segmentation': script_dir / 'segmentation_training.py'
     }
     
     if task_type not in script_map:
@@ -135,14 +139,34 @@ def run_training(task_type: str, data_path: str, device: str, epochs: int = 50,
         '--learning_rate', str(learning_rate)
     ]
     
+    # 添加通用進度參數
+    if progress_log_path:
+        cmd.extend(['--progress_log_path', progress_log_path])
+    if print_callbacks:
+        cmd.append('--print_callbacks')
+    if quiet:
+        cmd.append('--quiet')
+    # detection 專屬關閉 Ultralytics 輸出
+    if task_type == 'detection' and suppress_yolo_logging:
+        cmd.append('--suppress_yolo_logging')
+
     # 添加額外參數
     for key, value in kwargs.items():
         if value is not None:
             cmd.extend([f'--{key}', str(value)])
     
-    print(f"🚀 執行命令: {' '.join(cmd)}")
-    print("=" * 80)
+    if not quiet:
+        print(f"🚀 執行命令: {' '.join(cmd)}")
+        print("=" * 80)
     
+    # 若 detection 或 segmentation 且指定多張 GPU，提前拒絕
+    if task_type in ('detection', 'segmentation') and isinstance(device, str) and ',' in device:
+        gpu_ids = [x.strip() for x in device.split(',') if x.strip() != '']
+        if len(gpu_ids) > 1:
+            tag = 'Detection' if task_type == 'detection' else 'Segmentation'
+            print(f"❌ {tag} 訓練目前不支援多張 GPU，請改為指定單一卡，例如 --device 0 或 --device 1")
+            return False
+
     # 執行訓練
     try:
         result = subprocess.run(cmd, check=True)
@@ -161,7 +185,7 @@ def main():
     
     # 基本參數
     parser.add_argument('--task', type=str, required=True,
-                       choices=['classification', 'detection', 'segmentation', 'custom'],
+                       choices=['classification', 'detection', 'segmentation'],
                        help='訓練任務類型')
     parser.add_argument('--data_path', type=str, required=True,
                        help='資料集路徑')
@@ -169,8 +193,8 @@ def main():
                        help='設備配置 (單卡: "0", 多卡: "0,1,2,3")')
     parser.add_argument('--epochs', type=int, default=50,
                        help='訓練輪數')
-    parser.add_argument('--batch_size', type=int, default=16,
-                       help='批次大小')
+    parser.add_argument('--batch_size', type=int, default=4,
+                       help='批次大小 (預設 4，適合小數據集)')
     parser.add_argument('--learning_rate', type=float, default=0.01,
                        help='學習率')
     
@@ -181,16 +205,26 @@ def main():
                        help='圖片尺寸')
     parser.add_argument('--num_classes', type=int, default=None,
                        help='類別數量 (classification, custom)')
+    parser.add_argument('--progress_log_path', type=str, default=None,
+                       help='將訓練事件寫成 JSONL 的檔案路徑')
+    parser.add_argument('--print_callbacks', action='store_true',
+                       help='在終端列印 on_epoch_end 回呼資料')
+    parser.add_argument('--suppress_yolo_logging', action='store_true', default=False,
+                       help='關閉 Ultralytics 訓練日誌 (僅 detection 有效)')
+    parser.add_argument('--quiet', action='store_true',
+                       help='關閉所有標準輸出，只顯示 callback 訊息')
     
     args = parser.parse_args()
     
     # 自動檢測資料集參數
-    print("🔍 自動檢測資料集參數...")
+    if not args.quiet:
+        print("🔍 自動檢測資料集參數...")
     auto_num_classes = detect_num_classes(args.data_path, args.task)
     auto_img_size = detect_img_size(args.data_path, args.task)
     
-    print(f"📊 檢測到類別數量: {auto_num_classes}")
-    print(f"📐 檢測到圖片尺寸: {auto_img_size}")
+    if not args.quiet:
+        print(f"📊 檢測到類別數量: {auto_num_classes}")
+        print(f"📐 檢測到圖片尺寸: {auto_img_size}")
     
     # 準備額外參數
     extra_kwargs = {}
@@ -206,19 +240,20 @@ def main():
         extra_kwargs['num_classes'] = auto_num_classes
     
     # 顯示配置
-    print("🚀 iVIT 2.0 統一訓練啟動")
-    print("=" * 50)
-    print(f"📋 任務類型: {args.task}")
-    print(f"📁 資料路徑: {args.data_path}")
-    print(f"🔧 設備: {args.device}")
-    print(f"🔄 Epochs: {args.epochs}")
-    print(f"📦 批次大小: {args.batch_size}")
-    print(f"📈 學習率: {args.learning_rate}")
-    if extra_kwargs:
-        print("🔧 額外參數:")
-        for key, value in extra_kwargs.items():
-            print(f"   {key}: {value}")
-    print("=" * 50)
+    if not args.quiet:
+        print("🚀 iVIT 2.0 統一訓練啟動")
+        print("=" * 50)
+        print(f"📋 任務類型: {args.task}")
+        print(f"📁 資料路徑: {args.data_path}")
+        print(f"🔧 設備: {args.device}")
+        print(f"🔄 Epochs: {args.epochs}")
+        print(f"📦 批次大小: {args.batch_size}")
+        print(f"📈 學習率: {args.learning_rate}")
+        if extra_kwargs:
+            print("🔧 額外參數:")
+            for key, value in extra_kwargs.items():
+                print(f"   {key}: {value}")
+        print("=" * 50)
     
     # 執行訓練
     success = run_training(
@@ -228,13 +263,18 @@ def main():
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        progress_log_path=args.progress_log_path,
+        print_callbacks=args.print_callbacks,
+        suppress_yolo_logging=args.suppress_yolo_logging,
+        quiet=args.quiet,
         **extra_kwargs
     )
     
-    if success:
-        print("\n✅ 訓練成功完成！")
-    else:
-        print("\n❌ 訓練失敗！")
+    if not args.quiet:
+        if success:
+            print("\n✅ 訓練成功完成！")
+        else:
+            print("\n❌ 訓練失敗！")
         sys.exit(1)
 
 

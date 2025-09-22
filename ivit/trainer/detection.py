@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from ultralytics import YOLO
 from ultralytics.utils.metrics import DetMetrics
+from ultralytics.utils import LOGGER
 from ultralytics.data.utils import check_det_dataset
 
 from ..core.base_trainer import BaseTrainer, TaskConfig
@@ -28,6 +29,7 @@ class DetectionConfig(TaskConfig):
                  img_size: int = 640,
                  learning_rate: float = 0.01,
                  weight_decay: float = 5e-4,
+                 verbose: bool = True,
                  **kwargs):
         """
         Initialize detection configuration.
@@ -44,21 +46,24 @@ class DetectionConfig(TaskConfig):
         self.img_size = img_size
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.verbose = verbose
 
         # YOLO model instance
         self._yolo_model = None
 
-        print(f"✅ DetectionConfig initialized:")
-        print(f"   Model: {model_name}")
-        print(f"   Image size: {img_size}")
-        print(f"   Learning rate: {learning_rate}")
+        if self.verbose:
+            print(f"✅ DetectionConfig initialized:")
+            print(f"   Model: {model_name}")
+            print(f"   Image size: {img_size}")
+            print(f"   Learning rate: {learning_rate}")
 
     def get_model(self) -> YOLO:
         """Get the YOLO detection model."""
         if self._yolo_model is None:
             # Load pre-trained YOLO model
             self._yolo_model = YOLO(self.model_name)
-            print(f"✅ YOLO model loaded: {self.model_name}")
+            if self.verbose:
+                print(f"✅ YOLO model loaded: {self.model_name}")
 
         return self._yolo_model
 
@@ -123,6 +128,7 @@ class DetectionTrainer(BaseTrainer):
                  img_size: int = 640,
                  learning_rate: float = 0.01,
                  device: str = "auto",
+                 verbose: bool = True,
                  **kwargs):
         """
         Initialize DetectionTrainer.
@@ -133,36 +139,77 @@ class DetectionTrainer(BaseTrainer):
             learning_rate: Learning rate for training
             device: Device to use for training (supports '0,1' for multi-GPU)
         """
+        # 禁用多張 GPU：若使用者指定超過 1 張 GPU，直接拒絕
+        if isinstance(device, str) and "," in device:
+            gpu_ids = [x.strip() for x in device.split(',') if x.strip() != ""]
+            if len(gpu_ids) > 1:
+                raise ValueError("Detection 訓練目前不支援多張 GPU，請改為指定單一卡，例如 --device 0 或 --device 1")
+
         # Create configuration
         config = DetectionConfig(
             model_name=model_name,
             img_size=img_size,
             learning_rate=learning_rate,
+            verbose=verbose,
             **kwargs
         )
 
-        # Preserve raw device string for YOLO (e.g., '0,1')
+        # Preserve raw device string for YOLO (e.g., '0,1') and strictly bind base device
         self._yolo_device_override: Optional[str] = None
         base_device = device
-        if isinstance(device, str) and ("," in device or device.isdigit()):
-            # If user passed '0,1' or '0', keep this for YOLO and use 'cuda' for torch
-            self._yolo_device_override = device
-            base_device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if isinstance(device, str):
+            if "," in device:
+                # Multi-GPU: bind primary to first id to avoid initializing cuda:0 unexpectedly
+                self._yolo_device_override = device
+                # 先限制可見裝置，確保不會觸發實體 GPU0
+                try:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = device
+                except Exception:
+                    pass
+                if torch.cuda.is_available():
+                    try:
+                        primary_gpu = device.split(',')[0].strip()
+                        if primary_gpu.isdigit():
+                            base_device = f'cuda:{primary_gpu}'
+                        else:
+                            base_device = 'cuda'
+                    except Exception:
+                        base_device = 'cuda'
+                else:
+                    base_device = 'cpu'
+            elif device.isdigit():
+                # Single-GPU numeric: strictly bind to that CUDA index
+                self._yolo_device_override = device
+                # 先限制可見裝置，避免 PyTorch/YOLO 預設初始化到 0
+                try:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = device
+                except Exception:
+                    pass
+                if torch.cuda.is_available():
+                    base_device = f'cuda:{device}'
+                else:
+                    base_device = 'cpu'
+            else:
+                # 'cpu' or other strings: pass through
+                base_device = device
 
         # Initialize base trainer
-        super().__init__(config, device=base_device)
+        super().__init__(config, device=base_device, verbose=verbose)
 
         self.model_name = model_name
         self.img_size = img_size
         self.yolo_model = None
+        self._suppress_logs: bool = False
 
-        print(f"🎯 DetectionTrainer initialized with {model_name}")
-        if self._yolo_device_override:
-            print(f"🧩 YOLO device override: {self._yolo_device_override}")
+        if self.verbose:
+            print(f"🎯 DetectionTrainer initialized with {model_name}")
+            if self._yolo_device_override:
+                print(f"🧩 YOLO device override: {self._yolo_device_override}")
 
     def setup_training_components(self):
         """Initialize YOLO model."""
-        print("🔧 Setting up YOLO detection components...")
+        if self.verbose:
+            print("🔧 Setting up YOLO detection components...")
 
         # Get YOLO model from config
         self.yolo_model = self.task_config.get_model()
@@ -171,7 +218,185 @@ class DetectionTrainer(BaseTrainer):
         # The YOLO model will be used directly in the train() method
         self.model = self.yolo_model
 
-        print(f"✅ YOLO model initialized: {self.model_name}")
+        if self.verbose:
+            print(f"✅ YOLO model initialized: {self.model_name}")
+
+        # Bridge YOLO callbacks to BaseTrainer events if possible
+        try:
+            self._setup_yolo_callbacks()
+        except Exception as e:
+            print(f"⚠️ Failed to setup YOLO callbacks: {e}")
+
+    def _setup_yolo_callbacks(self):
+        """Register YOLO callbacks and map them to BaseTrainer events."""
+        if self.yolo_model is None:
+            return
+
+        # 用於追蹤訓練狀態
+        self._training_start_time = None
+        self._current_epoch = 0
+        self._current_batch = 0
+        self._total_batches = 0
+
+        def _wrap_emit(mapped_event_name: str):
+            def _cb(trainer_obj=None, *args, **kwargs):
+                payload = {}
+                try:
+                    if hasattr(trainer_obj, 'epoch'):
+                        # YOLO 以 0 起算，轉為 1-based
+                        self._current_epoch = int(getattr(trainer_obj, 'epoch', -1)) + 1
+                        payload['epoch'] = self._current_epoch
+                    
+                    if hasattr(trainer_obj, 'optimizer') and hasattr(trainer_obj.optimizer, 'param_groups'):
+                        try:
+                            payload['lr'] = float(trainer_obj.optimizer.param_groups[0]['lr'])
+                        except Exception:
+                            pass
+                    
+                    # metrics 可能在不同屬性上，盡量嘗試
+                    for key in ['metrics', 'results_dict', 'metrics_dict']:
+                        if hasattr(trainer_obj, key):
+                            try:
+                                metrics_dict = getattr(trainer_obj, key)
+                                if isinstance(metrics_dict, dict):
+                                    payload['metrics'] = {k: float(v) for k, v in metrics_dict.items() if isinstance(v, (int, float))}
+                            except Exception:
+                                pass
+                    
+                    if hasattr(trainer_obj, 'loss_items'):
+                        try:
+                            payload['loss_items'] = [float(x) for x in list(trainer_obj.loss_items)]
+                        except Exception:
+                            pass
+                    
+                    # 為所有事件添加基本的 progress 資料
+                    if mapped_event_name == 'on_batch_end':
+                        # 添加基本的 progress 資訊
+                        payload['batch'] = f"{self._current_batch + 1}/{self._total_batches}" if self._total_batches > 0 else "1/1"
+                        payload['progress'] = f"{(self._current_batch + 1) / self._total_batches * 100:.1f}%" if self._total_batches > 0 else "100.0%"
+                        
+                        # 添加時間資訊
+                        if hasattr(self, '_yolo_training_start_time'):
+                            elapsed_time = time.time() - self._yolo_training_start_time
+                            payload['elapsed'] = f"{elapsed_time:.1f}s"
+                            
+                            if self._current_batch > 0 and self._total_batches > 0:
+                                eta_seconds = (elapsed_time / (self._current_batch + 1)) * (self._total_batches - self._current_batch - 1)
+                                payload['eta'] = f"{eta_seconds:.1f}s"
+                                payload['speed'] = f"{(self._current_batch + 1) / elapsed_time:.1f} it/s" if elapsed_time > 0 else "0.0 it/s"
+                            else:
+                                payload['eta'] = "0.0s"
+                                payload['speed'] = "0.0 it/s"
+                    
+                    # 添加 progress 相關資料
+                    if mapped_event_name == 'on_batch_end':
+                        import time
+                        
+                        # 初始化訓練開始時間
+                        if self._training_start_time is None:
+                            self._training_start_time = time.time()
+                        
+                        # 調試：記錄 trainer_obj 的屬性
+                        debug_attrs = []
+                        if trainer_obj:
+                            debug_attrs = [attr for attr in dir(trainer_obj) if not attr.startswith('_') and not callable(getattr(trainer_obj, attr))]
+                        payload['debug_attrs'] = debug_attrs[:10]  # 只記錄前10個屬性
+                        
+                        # 獲取 batch 資訊 - 嘗試多種可能的屬性名
+                        batch_attrs = ['ni', 'batch_idx', 'batch_index', 'i']
+                        total_attrs = ['nb', 'total_batches', 'n', 'len']
+                        
+                        for attr in batch_attrs:
+                            if hasattr(trainer_obj, attr):
+                                try:
+                                    self._current_batch = int(getattr(trainer_obj, attr))
+                                    payload['debug_batch_attr'] = attr
+                                    break
+                                except (ValueError, TypeError):
+                                    continue
+                        
+                        for attr in total_attrs:
+                            if hasattr(trainer_obj, attr):
+                                try:
+                                    self._total_batches = int(getattr(trainer_obj, attr))
+                                    payload['debug_total_attr'] = attr
+                                    break
+                                except (ValueError, TypeError):
+                                    continue
+                        
+                        # 如果還是沒有找到，嘗試從 dataloader 獲取
+                        if self._total_batches == 0 and hasattr(trainer_obj, 'train_loader'):
+                            try:
+                                self._total_batches = len(trainer_obj.train_loader)
+                                payload['debug_total_source'] = 'train_loader'
+                            except Exception:
+                                pass
+                        
+                        # 記錄調試資訊
+                        payload['debug_current_batch'] = self._current_batch
+                        payload['debug_total_batches'] = self._total_batches
+                        
+                        # 計算 progress 資料
+                        if self._total_batches > 0:
+                            progress_percent = (self._current_batch + 1) / self._total_batches * 100
+                            payload['progress_percent'] = float(progress_percent)
+                            payload['batch_index'] = self._current_batch
+                            payload['total_batches'] = self._total_batches
+                            
+                            # 計算時間相關資料
+                            if self._training_start_time:
+                                elapsed_time = time.time() - self._training_start_time
+                                payload['elapsed_time'] = float(elapsed_time)
+                                
+                                if self._current_batch > 0:
+                                    avg_time_per_batch = elapsed_time / (self._current_batch + 1)
+                                    remaining_batches = self._total_batches - (self._current_batch + 1)
+                                    eta_seconds = remaining_batches * avg_time_per_batch
+                                    payload['eta_seconds'] = float(eta_seconds)
+                                    payload['iter_per_sec'] = float((self._current_batch + 1) / elapsed_time) if elapsed_time > 0 else 0.0
+                                else:
+                                    payload['eta_seconds'] = 0.0
+                                    payload['iter_per_sec'] = 0.0
+                        
+                        # 添加 loss 資料
+                        if hasattr(trainer_obj, 'loss_items') and trainer_obj.loss_items:
+                            try:
+                                loss_items = [float(x) for x in list(trainer_obj.loss_items)]
+                                if loss_items:
+                                    payload['loss'] = float(sum(loss_items))
+                                    payload['avg_loss'] = float(sum(loss_items) / len(loss_items))
+                            except Exception:
+                                pass
+                
+                except Exception as e:
+                    # 調試用：如果出現錯誤，記錄到 payload 中
+                    if mapped_event_name == 'on_batch_end':
+                        payload['debug_error'] = str(e)
+                
+                try:
+                    self._emit(mapped_event_name, payload)
+                except Exception:
+                    pass
+            return _cb
+
+        # Map YOLO events to unified events
+        # on_train_start -> on_train_start
+        # on_train_batch_end -> on_batch_end
+        # on_train_epoch_end -> on_epoch_end
+        # on_val_end -> on_validate_end
+        # on_fit_end -> on_train_end
+        try:
+            self.yolo_model.add_callback('on_train_start', _wrap_emit('on_train_start'))
+            self.yolo_model.add_callback('on_train_batch_end', _wrap_emit('on_batch_end'))
+            self.yolo_model.add_callback('on_train_epoch_end', _wrap_emit('on_epoch_end'))
+            self.yolo_model.add_callback('on_val_end', _wrap_emit('on_validate_end'))
+            self.yolo_model.add_callback('on_fit_end', _wrap_emit('on_train_end'))
+            if self.verbose:
+                print("✅ YOLO callbacks registered successfully")
+        except Exception as e:
+            # 某些版本的 ultralytics 可能使用不同 API，忽略即可
+            if self.verbose:
+                print(f"ℹ️ YOLO callback registration encountered an issue: {e}")
 
     def validate_dataset_format(self, dataset_path: str) -> bool:
         """Validate that dataset is in YOLO format."""
@@ -223,7 +448,8 @@ class DetectionTrainer(BaseTrainer):
             print("❌ Dataset directory structure not recognized as YOLO format")
             return False
 
-        print("✅ Dataset format validation passed")
+        if self.verbose:
+            print("✅ Dataset format validation passed")
         return True
 
     def create_yolo_config(self, dataset_path: str, epochs: int, batch_size: int) -> Dict[str, Any]:
@@ -232,10 +458,19 @@ class DetectionTrainer(BaseTrainer):
         os.makedirs('models', exist_ok=True)
         
         # 支援多GPU訓練 - YOLOv8 內建 DDP 支援
-        device_config = self._yolo_device_override if self._yolo_device_override else str(self.device)
-        if ',' in str(device_config):
-            print(f"🧩 啟用多GPU訓練: {device_config}")
-            # YOLOv8 支援多GPU，直接傳遞設備列表
+        # 若已限制 CUDA_VISIBLE_DEVICES，則需將傳給 YOLO 的 device 索引改為相對於可見裝置的索引
+        if self._yolo_device_override and ',' in self._yolo_device_override:
+            # 例如 override: "2,3" → 可見裝置為 [2,3]，傳給 YOLO 的 device 應為 "0,1"
+            num_visible = len(self._yolo_device_override.split(','))
+            device_config = ','.join(str(i) for i in range(num_visible))
+            print(f"🧩 啟用多GPU訓練: 可見裝置={self._yolo_device_override} → YOLO device='{device_config}'")
+        elif self._yolo_device_override and self._yolo_device_override.isdigit():
+            # 單卡情況：可見裝置為例如 "1"，傳給 YOLO 的 device 應為 "0"
+            device_config = '0'
+            print(f"🧭 單GPU訓練: 可見裝置={self._yolo_device_override} → YOLO device='0'")
+        else:
+            # 未覆寫時，直接使用 base device 字串（可能是 'cpu' 或 'cuda:X'）
+            device_config = str(self.device)
         
         config = {
             'data': str(Path(dataset_path) / 'data.yaml'),
@@ -249,9 +484,10 @@ class DetectionTrainer(BaseTrainer):
             'name': f'detection_{self.model_name}',  # 更簡潔的命名
             'save': True,
             'save_period': 10,
+            'patience': epochs,  # 設置 patience 為總 epoch 數，避免提前停止
             'cache': False,
             'workers': 8,
-            'verbose': True,
+            'verbose': not self._suppress_logs,
         }
 
         return config
@@ -269,7 +505,10 @@ class DetectionTrainer(BaseTrainer):
               epochs: int = 100,
               batch_size: int = 16,
               validation_split: float = 0.2,
-              save_path: Optional[str] = None) -> Dict[str, Any]:
+              save_path: Optional[str] = None,
+              callbacks: Optional[Dict[str, List]] = None,
+              progress_log_path: Optional[str] = None,
+              suppress_yolo_logging: bool = True) -> Dict[str, Any]:
         """
         Main training loop using YOLO.
 
@@ -283,10 +522,34 @@ class DetectionTrainer(BaseTrainer):
         Returns:
             Training results from YOLO
         """
-        print(f"🚀 Starting YOLO detection training for {epochs} epochs...")
-        print(f"📁 Dataset path: {dataset_path}")
-        print(f"🔢 Batch size: {batch_size}")
-        print(f"📐 Image size: {self.img_size}")
+        if self.verbose:
+            print(f"🚀 Starting YOLO detection training for {epochs} epochs...")
+            print(f"📁 Dataset path: {dataset_path}")
+            print(f"🔢 Batch size: {batch_size}")
+            print(f"📐 Image size: {self.img_size}")
+
+        # Configure callbacks and progress logging if provided
+        if callbacks:
+            for event_name, cbs in callbacks.items():
+                for cb in cbs:
+                    try:
+                        self.add_callback(event_name, cb)
+                    except Exception:
+                        pass
+        if progress_log_path:
+            self.progress_log_path = progress_log_path
+
+        # Configure suppression of Ultralytics logging
+        # 當 verbose=False 時，自動禁用 YOLO 的進度條和詳細輸出
+        if not self.verbose:
+            try:
+                import logging
+                LOGGER.setLevel(logging.ERROR)
+                # 禁用 tqdm 進度條
+                import os
+                os.environ['TQDM_DISABLE'] = '1'
+            except Exception:
+                pass
 
         # Setup training components
         self.setup_training_components()
@@ -300,8 +563,51 @@ class DetectionTrainer(BaseTrainer):
 
         try:
             # Start YOLO training
-            print("🏃‍♂️ Starting YOLO training...")
+            if self.verbose:
+                print("🏃‍♂️ Starting YOLO training...")
+            
+            # 若使用者以單一數字指定 GPU，如 "1"，強制將目前 CUDA 裝置切到該卡
+            try:
+                if self._yolo_device_override and isinstance(self._yolo_device_override, str) and self._yolo_device_override.isdigit():
+                    if torch.cuda.is_available():
+                        torch.cuda.set_device(int(self._yolo_device_override))
+                        if self.verbose:
+                            print(f"🧭 torch.cuda.set_device({self._yolo_device_override}) 已設定")
+            except Exception as _e:
+                # 安全忽略，避免因環境差異中斷訓練
+                if self.verbose:
+                    print(f"ℹ️ 無法設定 CUDA 裝置: {_e}")
+
+            # 手動觸發 callback 來模擬 progress 資料
+            import time
+            self._yolo_training_start_time = time.time()
+            
+            # 在訓練開始前觸發 on_train_start
+            self._emit('on_train_start', {'epoch': 0})
+            
             results = self.yolo_model.train(**train_config)
+            
+            # 手動觸發一些 callback 事件來提供 progress 資料
+            # 由於 YOLO 的 callback 系統可能不穩定，我們手動觸發一些事件
+            if hasattr(self, '_emit'):
+                # 觸發 epoch end 事件
+                final_metrics = {}
+                if results and hasattr(results, 'results_dict'):
+                    final_metrics = results.results_dict
+                elif results and isinstance(results, dict):
+                    final_metrics = results
+                
+                self._emit('on_epoch_end', {
+                    'epoch': epochs,
+                    'metrics': final_metrics,
+                    'val_metrics': final_metrics
+                })
+                
+                # 觸發 train end 事件
+                self._emit('on_train_end', {
+                    'final_metrics': final_metrics,
+                    'model_path': results.save_dir if hasattr(results, 'save_dir') else None
+                })
 
             # Save model if path provided (only on rank-0)
             if save_path and self._is_rank0():

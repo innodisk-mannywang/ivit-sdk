@@ -5,7 +5,7 @@ Image classification training with popular CNN architectures.
 """
 
 import os
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, Callable
 from pathlib import Path
 
 import torch
@@ -24,7 +24,7 @@ from ..core.base_trainer import BaseTrainer, TaskConfig
 class ClassificationDataset(Dataset):
     """Custom dataset for classification tasks."""
 
-    def __init__(self, dataset_path: str, transform=None, split: str = 'train'):
+    def __init__(self, dataset_path: str, transform=None, split: str = 'train', verbose: bool = True):
         """
         Initialize classification dataset.
 
@@ -32,10 +32,12 @@ class ClassificationDataset(Dataset):
             dataset_path: Path to dataset (ImageFolder structure expected)
             transform: Data transforms to apply
             split: Dataset split ('train', 'val', 'test')
+            verbose: Whether to show progress bars and standard output
         """
         self.dataset_path = Path(dataset_path)
         self.transform = transform
         self.split = split
+        self.verbose = verbose
 
         # Use torchvision ImageFolder for standard directory structure
         split_path = self.dataset_path / split if (self.dataset_path / split).exists() else self.dataset_path
@@ -44,10 +46,11 @@ class ClassificationDataset(Dataset):
         self.classes = self.dataset.classes
         self.num_classes = len(self.classes)
 
-        print(f"✅ Classification dataset loaded:")
-        print(f"   Path: {split_path}")
-        print(f"   Classes: {self.num_classes}")
-        print(f"   Samples: {len(self.dataset)}")
+        if self.verbose:
+            print(f"✅ Classification dataset loaded:")
+            print(f"   Path: {split_path}")
+            print(f"   Classes: {self.num_classes}")
+            print(f"   Samples: {len(self.dataset)}")
 
     def __len__(self):
         return len(self.dataset)
@@ -65,6 +68,7 @@ class ClassificationConfig(TaskConfig):
                  pretrained: bool = True,
                  learning_rate: float = 0.001,
                  weight_decay: float = 1e-4,
+                 verbose: bool = True,
                  **kwargs):
         """
         Initialize classification configuration.
@@ -75,6 +79,7 @@ class ClassificationConfig(TaskConfig):
             pretrained: Use pre-trained weights
             learning_rate: Learning rate for optimizer
             weight_decay: Weight decay for regularization
+            verbose: Whether to show progress bars and standard output
         """
         super().__init__(**kwargs)
 
@@ -83,14 +88,16 @@ class ClassificationConfig(TaskConfig):
         self.pretrained = pretrained
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.verbose = verbose
 
         # Store for auto-detection
         self._detected_classes = None
 
-        print(f"✅ ClassificationConfig initialized:")
-        print(f"   Model: {model_name}")
-        print(f"   Pretrained: {pretrained}")
-        print(f"   Learning rate: {learning_rate}")
+        if self.verbose:
+            print(f"✅ ClassificationConfig initialized:")
+            print(f"   Model: {model_name}")
+            print(f"   Pretrained: {pretrained}")
+            print(f"   Learning rate: {learning_rate}")
 
     def get_model(self) -> nn.Module:
         """Get the classification model."""
@@ -119,7 +126,8 @@ class ClassificationConfig(TaskConfig):
         else:
             raise ValueError(f"Unsupported model: {self.model_name}")
 
-        print(f"✅ Model loaded: {self.model_name} (classes: {self.num_classes})")
+        if self.verbose:
+            print(f"✅ Model loaded: {self.model_name} (classes: {self.num_classes})")
         return model
 
     def get_loss_function(self) -> nn.Module:
@@ -157,7 +165,7 @@ class ClassificationConfig(TaskConfig):
 
         # Create dataset
         split = 'train' if shuffle else 'val'
-        dataset = ClassificationDataset(dataset_path, transform=transform, split=split)
+        dataset = ClassificationDataset(dataset_path, transform=transform, split=split, verbose=self.verbose)
 
         # Auto-detect number of classes
         if self._detected_classes is None:
@@ -215,6 +223,7 @@ class ClassificationTrainer(BaseTrainer):
                  pretrained: bool = True,
                  learning_rate: float = 0.001,
                  device: str = "auto",
+                 verbose: bool = True,
                  **kwargs):
         """
         Initialize ClassificationTrainer.
@@ -225,6 +234,7 @@ class ClassificationTrainer(BaseTrainer):
             pretrained: Use pre-trained weights
             learning_rate: Learning rate for optimizer
             device: Device to use for training
+            verbose: Whether to show progress bars and standard output
         """
         # Create configuration
         config = ClassificationConfig(
@@ -236,10 +246,11 @@ class ClassificationTrainer(BaseTrainer):
         )
 
         # Initialize base trainer
-        super().__init__(config, device=device)
+        super().__init__(config, device=device, verbose=verbose)
 
         self.model_name = model_name
-        print(f"🎯 ClassificationTrainer initialized with {model_name}")
+        if self.verbose:
+            print(f"🎯 ClassificationTrainer initialized with {model_name}")
 
     def get_recommendations(self, dataset_path: str) -> Dict[str, Any]:
         """Get intelligent recommendations for this dataset."""
@@ -286,7 +297,9 @@ class ClassificationTrainer(BaseTrainer):
               epochs: int = 100,
               batch_size: int = 32,
               validation_split: float = 0.2,
-              save_path: Optional[str] = None) -> Dict[str, Any]:
+              save_path: Optional[str] = None,
+              callbacks: Optional[Dict[str, List[Callable[[Dict[str, Any]], None]]]] = None,
+              progress_log_path: Optional[str] = None) -> Dict[str, Any]:
         """
         Main training loop with automatic class_names.json generation.
         
@@ -296,6 +309,8 @@ class ClassificationTrainer(BaseTrainer):
             batch_size: Batch size for training
             validation_split: Fraction of data to use for validation
             save_path: Path to save the trained model
+            callbacks: Optional callbacks for training events
+            progress_log_path: Optional path for progress logging
             
         Returns:
             Training history and final metrics
@@ -316,7 +331,9 @@ class ClassificationTrainer(BaseTrainer):
             epochs=epochs,
             batch_size=batch_size,
             validation_split=validation_split,
-            save_path=save_path
+            save_path=save_path,
+            callbacks=callbacks,
+            progress_log_path=progress_log_path
         )
         
         # 自動產生 class_names.json
