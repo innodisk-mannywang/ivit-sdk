@@ -4,14 +4,25 @@
 
 ## 使用此範本
 
+### 方式一：使用腳本（推薦）
+
 ```bash
-# 複製範本到新專案
-cp -r claude-project-starter your-project-name
+# 下載並執行建立腳本
+curl -fsSL https://raw.githubusercontent.com/innodisk-mannywang/claude-project-starter/main/create-project.sh | bash -s -- my-project
 
-# 進入專案目錄
-cd your-project-name
+# 或指定目標目錄
+curl -fsSL https://raw.githubusercontent.com/innodisk-mannywang/claude-project-starter/main/create-project.sh | bash -s -- my-project /path/to/workspace
+```
 
-# 初始化 Git
+### 方式二：手動操作
+
+```bash
+# Clone 範本
+git clone https://github.com/innodisk-mannywang/claude-project-starter.git my-project
+
+# 進入專案目錄並重新初始化
+cd my-project
+rm -rf .git
 git init
 
 # 編輯 CLAUDE.md 填入專案資訊
