@@ -1,0 +1,68 @@
+/**
+ * @file runtime_init.cpp
+ * @brief Runtime initialization and auto-registration
+ */
+
+#include "ivit/runtime/runtime.hpp"
+
+#ifdef IVIT_HAS_TENSORRT
+#include "ivit/runtime/tensorrt_runtime.hpp"
+#endif
+
+#ifdef IVIT_HAS_OPENVINO
+#include "ivit/runtime/openvino_runtime.hpp"
+#endif
+
+#ifdef IVIT_HAS_ONNXRUNTIME
+#include "ivit/runtime/onnx_runtime.hpp"
+#endif
+
+namespace ivit {
+
+/**
+ * @brief Runtime auto-registration on library load
+ */
+class RuntimeAutoRegister {
+public:
+    RuntimeAutoRegister() {
+        auto& factory = RuntimeFactory::instance();
+
+#ifdef IVIT_HAS_TENSORRT
+        try {
+            auto tensorrt = std::make_shared<TensorRTRuntime>();
+            if (tensorrt->is_available()) {
+                factory.register_runtime(tensorrt);
+            }
+        } catch (...) {
+            // TensorRT not available, skip
+        }
+#endif
+
+#ifdef IVIT_HAS_OPENVINO
+        try {
+            auto openvino = std::make_shared<OpenVINORuntime>();
+            if (openvino->is_available()) {
+                factory.register_runtime(openvino);
+            }
+        } catch (...) {
+            // OpenVINO not available, skip
+        }
+#endif
+
+#ifdef IVIT_HAS_ONNXRUNTIME
+        try {
+            auto onnxruntime = std::make_shared<ONNXRuntimeBackend>();
+            if (onnxruntime->is_available()) {
+                factory.register_runtime(onnxruntime);
+            }
+        } catch (...) {
+            // ONNX Runtime not available, skip
+        }
+#endif
+    }
+};
+
+// Static instance triggers registration on library load
+static RuntimeAutoRegister g_runtime_auto_register;
+
+} // namespace ivit
