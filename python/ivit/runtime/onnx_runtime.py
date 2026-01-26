@@ -6,12 +6,12 @@ from typing import Dict, List, Any, Optional
 import numpy as np
 import logging
 
-from ..core.types import TensorInfo, LoadConfig
+from .base import BaseRuntime, BaseModel
 
 logger = logging.getLogger(__name__)
 
 
-class ONNXRuntime:
+class ONNXRuntime(BaseRuntime):
     """
     ONNX Runtime backend.
 
@@ -39,26 +39,52 @@ class ONNXRuntime:
     def is_available(self) -> bool:
         return self._ort is not None
 
-    def load(self, path: str, config: LoadConfig) -> Any:
+    def get_version(self) -> str:
+        """Get ONNX Runtime version."""
+        return self._ort.__version__ if self._ort else "unknown"
+
+    def get_supported_devices(self) -> List[str]:
+        """Get list of supported devices based on available providers."""
+        devices = ["cpu"]
+        if "CUDAExecutionProvider" in self._providers:
+            devices.append("cuda")
+        if "TensorrtExecutionProvider" in self._providers:
+            devices.append("tensorrt")
+        if "OpenVINOExecutionProvider" in self._providers:
+            devices.append("openvino")
+        if "DmlExecutionProvider" in self._providers:
+            devices.append("directml")
+        return devices
+
+    def load_model(
+        self,
+        path: str,
+        device: str = "cpu",
+        precision: str = "fp32",
+        **kwargs
+    ) -> "ORTModel":
         """
         Load ONNX model.
 
         Args:
             path: Model path
-            config: Load configuration
+            device: Target device
+            precision: Precision mode (fp32, fp16)
 
         Returns:
-            ONNX session
+            ORTModel instance
         """
         # Select providers based on device
-        providers = self._select_providers(config.device)
+        providers = self._select_providers(device)
 
         # Create session options
         sess_options = self._ort.SessionOptions()
+        sess_options.enable_cpu_mem_arena = True
+        sess_options.enable_mem_pattern = True
 
-        if config.use_cache:
-            sess_options.enable_cpu_mem_arena = True
-            sess_options.enable_mem_pattern = True
+        # Suppress Memcpy warning (level 3 = ERROR, suppresses WARNING)
+        # This avoids the "Memcpy nodes are added to the graph" warning
+        sess_options.log_severity_level = 3
 
         # Set number of threads
         if hasattr(sess_options, 'intra_op_num_threads'):
@@ -76,68 +102,7 @@ class ONNXRuntime:
             providers=providers
         )
 
-        return session
-
-    def get_input_info(self, session: Any) -> List[TensorInfo]:
-        """Get input tensor information."""
-        inputs = []
-        for inp in session.get_inputs():
-            dtype = self._map_dtype(inp.type)
-            inputs.append(TensorInfo(
-                name=inp.name,
-                shape=tuple(inp.shape) if inp.shape else (),
-                dtype=dtype,
-                layout="NCHW",
-            ))
-        return inputs
-
-    def get_output_info(self, session: Any) -> List[TensorInfo]:
-        """Get output tensor information."""
-        outputs = []
-        for out in session.get_outputs():
-            dtype = self._map_dtype(out.type)
-            outputs.append(TensorInfo(
-                name=out.name,
-                shape=tuple(out.shape) if out.shape else (),
-                dtype=dtype,
-                layout="NCHW",
-            ))
-        return outputs
-
-    def infer(
-        self,
-        session: Any,
-        inputs: Dict[str, np.ndarray]
-    ) -> Dict[str, np.ndarray]:
-        """
-        Run inference.
-
-        Args:
-            session: ONNX session
-            inputs: Input tensors
-
-        Returns:
-            Output tensors
-        """
-        # Get output names
-        output_names = [o.name for o in session.get_outputs()]
-
-        # Get input name (handle single input case)
-        input_names = [i.name for i in session.get_inputs()]
-
-        # Map inputs to correct names
-        feed_dict = {}
-        if len(input_names) == 1 and len(inputs) == 1:
-            # Single input - use correct name
-            feed_dict[input_names[0]] = list(inputs.values())[0]
-        else:
-            feed_dict = inputs
-
-        # Run inference
-        outputs = session.run(output_names, feed_dict)
-
-        # Create output dict
-        return {name: output for name, output in zip(output_names, outputs)}
+        return ORTModel(session, device)
 
     def _select_providers(self, device: str) -> List[str]:
         """Select execution providers based on device."""
@@ -175,3 +140,72 @@ class ONNXRuntime:
             "tensor(bool)": "bool",
         }
         return type_map.get(onnx_type, "float32")
+
+
+class ORTModel(BaseModel):
+    """ONNX Runtime model wrapper."""
+
+    def __init__(self, session, device: str):
+        self.session = session
+        self.device = device
+
+        # Cache input/output info
+        self._input_info = []
+        self._output_info = []
+
+        for inp in session.get_inputs():
+            shape = list(inp.shape) if inp.shape else []
+            # Handle dynamic dimensions
+            shape = [s if isinstance(s, int) else 1 for s in shape]
+            self._input_info.append({
+                "name": inp.name,
+                "shape": shape,
+                "dtype": ONNXRuntime._map_dtype(inp.type)
+            })
+
+        for out in session.get_outputs():
+            shape = list(out.shape) if out.shape else []
+            shape = [s if isinstance(s, int) else 1 for s in shape]
+            self._output_info.append({
+                "name": out.name,
+                "shape": shape,
+                "dtype": ONNXRuntime._map_dtype(out.type)
+            })
+
+    def infer(self, inputs: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        """
+        Run inference.
+
+        Args:
+            inputs: Dictionary of input name to numpy array
+
+        Returns:
+            Dictionary of output name to numpy array
+        """
+        # Get output names
+        output_names = [o["name"] for o in self._output_info]
+
+        # Get input names
+        input_names = [i["name"] for i in self._input_info]
+
+        # Map inputs to correct names
+        feed_dict = {}
+        if len(input_names) == 1 and len(inputs) == 1:
+            # Single input - use correct name
+            feed_dict[input_names[0]] = list(inputs.values())[0]
+        else:
+            feed_dict = inputs
+
+        # Run inference
+        outputs = self.session.run(output_names, feed_dict)
+
+        # Create output dict
+        return {name: output for name, output in zip(output_names, outputs)}
+
+    def get_input_info(self) -> List[Dict[str, Any]]:
+        """Get input tensor information."""
+        return self._input_info
+
+    def get_output_info(self) -> List[Dict[str, Any]]:
+        """Get output tensor information."""
+        return self._output_info

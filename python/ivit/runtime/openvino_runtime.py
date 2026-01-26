@@ -6,6 +6,8 @@ from typing import Dict, List, Optional, Any
 import numpy as np
 import logging
 
+from .base import BaseRuntime, BaseModel
+
 logger = logging.getLogger(__name__)
 
 # Try to import OpenVINO
@@ -18,7 +20,7 @@ except ImportError:
     logger.debug("OpenVINO not available")
 
 
-class OpenVINORuntime:
+class OpenVINORuntime(BaseRuntime):
     """OpenVINO runtime for Intel hardware."""
 
     def __init__(self):
@@ -30,14 +32,26 @@ class OpenVINORuntime:
 
     @property
     def name(self) -> str:
-        return "OpenVINO"
-
-    @property
-    def backend_type(self) -> str:
         return "openvino"
 
+    @property
     def is_available(self) -> bool:
         return HAS_OPENVINO
+
+    def get_version(self) -> str:
+        """Get OpenVINO version."""
+        try:
+            from openvino import get_version
+            return get_version()
+        except Exception:
+            return "unknown"
+
+    def get_supported_devices(self) -> List[str]:
+        """Get list of supported devices."""
+        devices = []
+        for d in self.core.available_devices:
+            devices.append(d.lower())
+        return devices
 
     def supported_formats(self) -> List[str]:
         return [".onnx", ".xml", ".pdmodel"]
@@ -144,7 +158,7 @@ class OpenVINORuntime:
         return device.upper()
 
 
-class OVModel:
+class OVModel(BaseModel):
     """OpenVINO model wrapper."""
 
     def __init__(
@@ -188,9 +202,12 @@ class OVModel:
         Returns:
             Dictionary of output name to numpy array
         """
-        # Set inputs
+        from openvino import Tensor
+
+        # Set inputs - convert numpy arrays to OpenVINO tensors
         for name, data in inputs.items():
-            self.infer_request.set_tensor(name, data)
+            ov_tensor = Tensor(data)
+            self.infer_request.set_tensor(name, ov_tensor)
 
         # Run inference
         self.infer_request.infer()

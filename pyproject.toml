@@ -1,0 +1,129 @@
+[build-system]
+requires = ["scikit-build-core>=0.5", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "ivit"
+version = "1.0.0"
+description = "iVIT-SDK: Innodisk Vision Intelligence Toolkit - Unified CV SDK for Intel/NVIDIA/Qualcomm"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Innodisk", email = "support@innodisk.com"}
+]
+maintainers = [
+    {name = "Innodisk AI Team", email = "ai@innodisk.com"}
+]
+keywords = [
+    "computer-vision",
+    "deep-learning",
+    "inference",
+    "openvino",
+    "tensorrt",
+    "snpe",
+    "ai",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20",
+    "opencv-python>=4.5",
+    "pillow>=8.0",
+    "pyyaml>=5.4",
+    "requests>=2.25",
+    "tqdm>=4.60",
+]
+
+[project.optional-dependencies]
+zoo = [
+    "ultralytics>=8.0",
+]
+train = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "albumentations>=1.3",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+    "sphinx>=6.0",
+    "sphinx-rtd-theme>=1.2",
+]
+all = [
+    "ivit[zoo,train,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/innodisk/ivit-sdk"
+Documentation = "https://ivit-sdk.readthedocs.io"
+Repository = "https://github.com/innodisk/ivit-sdk"
+Issues = "https://github.com/innodisk/ivit-sdk/issues"
+
+[project.scripts]
+ivit = "ivit.cli:main"
+
+[tool.scikit-build]
+cmake.minimum-version = "3.18"
+cmake.build-type = "Release"
+wheel.packages = ["python/ivit"]
+wheel.install-dir = "ivit"
+
+[tool.scikit-build.cmake.define]
+IVIT_BUILD_PYTHON = "ON"
+IVIT_BUILD_TESTS = "OFF"
+IVIT_BUILD_EXAMPLES = "OFF"
+
+[tool.black]
+line-length = 88
+target-version = ["py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.venv
+    | build
+    | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["python/ivit"]
+omit = ["*/__pycache__/*", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+]

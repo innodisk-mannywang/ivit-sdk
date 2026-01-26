@@ -147,9 +147,12 @@ def get_backend_for_device(device: str) -> str:
 
     device_lower = device.lower()
 
-    if device_lower.startswith("cuda") or device_lower == "gpu":
-        if _cuda_available():
+    if device_lower.startswith("cuda"):
+        # Try TensorRT first, then fall back to ONNX Runtime CUDA
+        if _tensorrt_available():
             return "tensorrt"
+        elif _onnxruntime_cuda_available():
+            return "onnxruntime"
 
     if device_lower in ("cpu", "gpu", "npu", "vpu") or device_lower.startswith("gpu:"):
         if _openvino_available():
@@ -279,6 +282,26 @@ def _cuda_available() -> bool:
             return cuda.Device.count() > 0
         except ImportError:
             return False
+
+
+def _tensorrt_available() -> bool:
+    """Check if TensorRT with pycuda is available."""
+    try:
+        import tensorrt as trt
+        import pycuda.driver as cuda
+        import pycuda.autoinit
+        return True
+    except ImportError:
+        return False
+
+
+def _onnxruntime_cuda_available() -> bool:
+    """Check if ONNX Runtime CUDA provider is available."""
+    try:
+        import onnxruntime as ort
+        return "CUDAExecutionProvider" in ort.get_available_providers()
+    except ImportError:
+        return False
 
 
 def _openvino_available() -> bool:

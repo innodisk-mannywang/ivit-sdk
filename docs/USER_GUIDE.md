@@ -59,7 +59,7 @@
 - **Python**：3.9 或更高版本
 - **硬體**：支援的 Intel、NVIDIA 或 Qualcomm 裝置
 
-### 安裝步驟
+### Python 安裝
 
 #### 方法 1：從原始碼安裝（推薦）
 
@@ -70,6 +70,9 @@ cd ivit-sdk
 
 # 基本安裝
 pip install -e .
+
+# (選用) 安裝 Model Zoo 支援（自動下載和轉換模型）
+pip install -e ".[zoo]"
 
 # 包含訓練功能（需要 PyTorch）
 pip install -e ".[train]"
@@ -87,6 +90,9 @@ pip install -e ".[all]"
 # 基本安裝
 pip install ivit
 
+# (選用) 安裝 Model Zoo 支援
+pip install "ivit[zoo]"
+
 # 包含訓練功能
 pip install "ivit[train]"
 
@@ -96,7 +102,96 @@ pip install "ivit[all]"
 
 > **注意**：目前套件尚未發布至 PyPI，請使用方法 1 從原始碼安裝。
 
+> **Model Zoo 說明**：使用 `ivit.zoo.load()` 自動下載模型時，需要安裝 `ultralytics` 套件來進行模型轉換。若使用本地 ONNX 檔案則不需要。
+
+### C++ 建置
+
+#### 系統需求
+
+- **編譯器**：GCC 9+ / Clang 10+ / MSVC 2019+
+- **CMake**：3.16 或更高版本
+- **OpenCV**：4.5 或更高版本
+
+#### 依賴套件安裝 (Ubuntu)
+
+```bash
+# 基本建置工具
+sudo apt-get update
+sudo apt-get install -y build-essential cmake git
+
+# OpenCV
+sudo apt-get install -y libopencv-dev
+
+# (選用) Intel OpenVINO
+# 參考：https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_linux.html
+
+# (選用) NVIDIA TensorRT
+# 參考：https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html
+```
+
+#### 建置步驟
+
+```bash
+# 複製專案
+git clone https://github.com/innodisk/ivit-sdk.git
+cd ivit-sdk
+
+# 建立建置目錄
+mkdir build && cd build
+
+# 設定 CMake（根據需要啟用後端）
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DIVIT_USE_OPENVINO=ON \
+    -DIVIT_USE_TENSORRT=ON \
+    -DIVIT_USE_ONNXRUNTIME=ON \
+    -DIVIT_BUILD_EXAMPLES=ON
+
+# 建置
+make -j$(nproc)
+
+# 安裝（選用）
+sudo make install
+```
+
+#### CMake 選項
+
+| 選項 | 預設值 | 說明 |
+|------|--------|------|
+| `DIVIT_USE_OPENVINO` | OFF | 啟用 Intel OpenVINO 後端 |
+| `DIVIT_USE_TENSORRT` | OFF | 啟用 NVIDIA TensorRT 後端 |
+| `DIVIT_USE_ONNXRUNTIME` | ON | 啟用 ONNX Runtime 後端 |
+| `DIVIT_USE_SNPE` | OFF | 啟用 Qualcomm SNPE 後端 |
+| `DIVIT_BUILD_EXAMPLES` | ON | 建置範例程式 |
+| `DIVIT_BUILD_TESTS` | OFF | 建置測試程式 |
+| `DIVIT_BUILD_PYTHON` | OFF | 建置 Python 綁定 |
+
+#### 在專案中使用
+
+**CMakeLists.txt**：
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(my_project)
+
+# 尋找 iVIT-SDK
+find_package(ivit REQUIRED)
+
+# 建立執行檔
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE ivit::ivit)
+```
+
+**pkg-config**：
+
+```bash
+# 編譯
+g++ -o my_app main.cpp $(pkg-config --cflags --libs ivit)
+```
+
 ### 驗證安裝
+
+#### Python
 
 ```python
 import ivit
@@ -120,6 +215,44 @@ iVIT-SDK 版本: 1.0.0
 │  cuda:0   │ NVIDIA RTX 6000 Ada     │ tensorrt         │
 │  cuda:1   │ NVIDIA RTX 6000 Ada     │ tensorrt         │
 ╰─────────────────────────────────────────────────────────╯
+```
+
+#### C++
+
+```cpp
+#include <iostream>
+#include "ivit/ivit.hpp"
+
+int main() {
+    // 檢查版本
+    std::cout << "iVIT-SDK Version: " << ivit::version() << std::endl;
+
+    // 列出可用裝置
+    auto devices = ivit::list_devices();
+    std::cout << "Available devices: " << devices.size() << std::endl;
+
+    for (const auto& dev : devices) {
+        std::cout << "  - " << dev.id << ": " << dev.name
+                  << " (" << dev.backend << ")" << std::endl;
+    }
+
+    return 0;
+}
+```
+
+建置與執行：
+```bash
+cd build
+./simple_inference devices
+```
+
+預期輸出：
+```
+iVIT-SDK Version: 1.0.0
+Available devices: 3
+  - cpu: Intel(R) Xeon(R) (onnxruntime)
+  - cuda:0: NVIDIA RTX 6000 Ada (tensorrt)
+  - cuda:1: NVIDIA RTX 6000 Ada (tensorrt)
 ```
 
 ---
@@ -388,6 +521,56 @@ else:
 3. **使用 `results.to_dict()` 取得結構化輸出**
 4. **測試多種硬體環境**
 
+#### C++ 範例
+
+```cpp
+#include "ivit/ivit.hpp"
+#include <opencv2/opencv.hpp>
+
+using namespace ivit;
+
+int main() {
+    // Step 1: 裝置探索
+    auto devices = list_devices();
+    std::cout << "Found " << devices.size() << " devices" << std::endl;
+
+    auto best = get_best_device();
+    std::cout << "Best device: " << best.id << std::endl;
+
+    // Step 2: 載入模型（使用 load_model API）
+    LoadConfig config;
+    config.device = best.id;
+    auto model = load_model("yolov8n.onnx", config);
+
+    // Step 3: 安全推論
+    try {
+        cv::Mat image = cv::imread("image.jpg");
+        auto results = model->predict(image);
+
+        std::cout << "Detections: " << results.detections.size() << std::endl;
+        std::cout << "Inference time: " << results.inference_time_ms << " ms" << std::endl;
+
+        // 輸出偵測結果
+        for (const auto& det : results.detections) {
+            std::cout << det.label << ": " << det.confidence << std::endl;
+        }
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+
+    return 0;
+}
+```
+
+**完整範例**：`examples/cpp/si_quickstart.cpp`
+
+```bash
+# 建置與執行
+cd build && make si_quickstart
+./si_quickstart image.jpg model.onnx
+```
+
 ---
 
 ### AI 應用開發者
@@ -610,6 +793,20 @@ trainer.export("model.xml", format="openvino", quantize="int8")
 trainer.export("model.engine", format="tensorrt", quantize="fp16")
 ```
 
+#### C++ 說明
+
+> **Note**: 訓練功能目前僅支援 Python API，因為底層依賴 PyTorch 生態系統。C++ API 專注於推論部署。
+>
+> 訓練完成後，可將模型匯出為 ONNX 格式，再使用 C++ API 進行部署：
+>
+> ```cpp
+> // 載入 Python 訓練後匯出的模型
+> ivit::LoadConfig config;
+> config.device = "cuda:0";
+> auto model = ivit::load_model("my_trained_model.onnx", config);
+> auto results = model->predict(image);
+> ```
+
 ---
 
 ### 嵌入式工程師
@@ -736,9 +933,24 @@ class CustomPreProcessor(BasePreProcessor):
         self.target_size = target_size
         self.normalize = normalize
 
-    def __call__(self, image: np.ndarray) -> np.ndarray:
+    def process(self, image: np.ndarray, target_size: tuple = None, **kwargs) -> tuple:
+        """
+        前處理圖像。
+
+        Args:
+            image: 輸入圖像 (BGR, HWC)
+            target_size: 目標尺寸，若為 None 則使用 self.target_size
+
+        Returns:
+            Tuple of (tensor, preprocess_info)
+        """
+        if target_size is None:
+            target_size = self.target_size
+
+        orig_h, orig_w = image.shape[:2]
+
         # 1. 調整尺寸
-        resized = cv2.resize(image, self.target_size)
+        resized = cv2.resize(image, target_size)
 
         # 2. BGR 轉 RGB
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
@@ -751,7 +963,13 @@ class CustomPreProcessor(BasePreProcessor):
         transposed = np.transpose(rgb, (2, 0, 1))
         batched = np.expand_dims(transposed, axis=0)
 
-        return batched
+        # 回傳 tensor 和前處理資訊（供後處理使用）
+        preprocess_info = {
+            "orig_size": (orig_h, orig_w),
+            "target_size": target_size,
+        }
+
+        return batched, preprocess_info
 
 # 註冊自定義前處理器
 register_preprocessor("custom", CustomPreProcessor)
@@ -777,9 +995,32 @@ class CustomPostProcessor(BasePostProcessor):
         self.iou_threshold = iou_threshold
         self.class_names = class_names or []
 
-    def __call__(self, outputs: dict, original_shape: tuple) -> Results:
+    def process(
+        self,
+        outputs: dict,
+        orig_size: tuple,
+        preprocess_info: dict = None,
+        config=None,
+        labels: list = None,
+    ) -> Results:
+        """
+        後處理模型輸出。
+
+        Args:
+            outputs: 原始模型輸出
+            orig_size: 原始圖像尺寸 (height, width)
+            preprocess_info: 前處理資訊
+            config: 推論配置
+            labels: 類別標籤（若為 None 則使用 self.class_names）
+
+        Returns:
+            Results 物件
+        """
         results = Results()
-        results.image_size = original_shape[:2]
+        results.image_size = orig_size
+
+        if labels is None:
+            labels = self.class_names
 
         # 解析模型輸出（範例）
         predictions = outputs.get("output", outputs[list(outputs.keys())[0]])
@@ -791,7 +1032,7 @@ class CustomPostProcessor(BasePostProcessor):
                 continue
 
             class_id = int(pred[5])
-            label = self.class_names[class_id] if class_id < len(self.class_names) else f"class_{class_id}"
+            label = labels[class_id] if class_id < len(labels) else f"class_{class_id}"
 
             det = Detection(
                 bbox=BBox(pred[0], pred[1], pred[2], pred[3]),
@@ -837,6 +1078,68 @@ model.set_postprocessor(CustomPostProcessor(conf_threshold=0.6, class_names=["pe
 2. **使用 FP16 量化** - 大多數情況下精度損失可忽略
 3. **根據硬體調整配置** - OpenVINO 用 LATENCY 模式，TensorRT 啟用 CUDA Graph
 4. **監控前處理耗時** - 前處理可能佔總耗時 30% 以上
+
+#### C++ 範例
+
+```cpp
+#include "ivit/ivit.hpp"
+#include <opencv2/opencv.hpp>
+#include <chrono>
+#include <vector>
+#include <numeric>
+
+using namespace ivit;
+
+int main() {
+    // 選擇裝置
+    auto device = get_best_device();
+    std::cout << "Using device: " << device.id << std::endl;
+
+    // 載入模型（使用 load_model API）
+    LoadConfig config;
+    config.device = device.id;
+    auto model = load_model("yolov8n.onnx", config);
+
+    // Step 1: 模型預熱（重要！）
+    std::cout << "Warming up..." << std::endl;
+    cv::Mat dummy(480, 640, CV_8UC3);
+    cv::randu(dummy, cv::Scalar(0), cv::Scalar(255));
+    for (int i = 0; i < 10; ++i) {
+        model->predict(dummy);
+    }
+
+    // Step 2: 效能測試
+    cv::Mat test_image(480, 640, CV_8UC3);
+    cv::randu(test_image, cv::Scalar(0), cv::Scalar(255));
+
+    std::vector<double> latencies;
+    for (int i = 0; i < 100; ++i) {
+        auto start = std::chrono::high_resolution_clock::now();
+        model->predict(test_image);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        double ms = std::chrono::duration<double, std::milli>(end - start).count();
+        latencies.push_back(ms);
+    }
+
+    double avg = std::accumulate(latencies.begin(), latencies.end(), 0.0) / latencies.size();
+    std::cout << "Average latency: " << avg << " ms" << std::endl;
+    std::cout << "FPS: " << 1000.0 / avg << std::endl;
+
+    // Note: Runtime 配置（OpenVINO、TensorRT）可透過 Python API 進行
+    // C++ 專注於推論執行和效能測試
+
+    return 0;
+}
+```
+
+**完整範例**：`examples/cpp/embedded_optimization.cpp`
+
+```bash
+# 建置與執行
+cd build && make embedded_optimization
+./embedded_optimization model.onnx --device cuda:0 --benchmark
+```
 
 ---
 
@@ -1054,6 +1357,104 @@ async def stats():
 # 啟動: uvicorn server:app --host 0.0.0.0 --port 8080
 ```
 
+#### C++ 範例
+
+```cpp
+#include "ivit/ivit.hpp"
+#include <opencv2/opencv.hpp>
+#include <mutex>
+#include <deque>
+#include <numeric>
+
+using namespace ivit;
+
+// FPS 計數器（滑動視窗）
+class FPSCounter {
+public:
+    explicit FPSCounter(size_t window_size = 30)
+        : window_size_(window_size) {}
+
+    void record(double latency_ms) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        latencies_.push_back(latency_ms);
+        while (latencies_.size() > window_size_)
+            latencies_.pop_front();
+    }
+
+    double fps() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (latencies_.empty()) return 0.0;
+        double avg_ms = std::accumulate(latencies_.begin(), latencies_.end(), 0.0) / latencies_.size();
+        return avg_ms > 0 ? 1000.0 / avg_ms : 0.0;
+    }
+
+private:
+    size_t window_size_;
+    std::deque<double> latencies_;
+    mutable std::mutex mutex_;
+};
+
+// 推論服務
+class InferenceService {
+public:
+    InferenceService(const std::string& model_path, const DeviceInfo& device)
+        : fps_counter_(30) {
+
+        // 使用 load_model API
+        LoadConfig config;
+        config.device = device.id;
+        model_ = load_model(model_path, config);
+
+        // 預熱
+        cv::Mat dummy(480, 640, CV_8UC3);
+        cv::randu(dummy, cv::Scalar(0), cv::Scalar(255));
+        for (int i = 0; i < 10; ++i) {
+            model_->predict(dummy);
+        }
+    }
+
+    Results infer(const cv::Mat& image) {
+        auto start = std::chrono::high_resolution_clock::now();
+        auto results = model_->predict(image);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        double latency = std::chrono::duration<double, std::milli>(end - start).count();
+        fps_counter_.record(latency);
+
+        return results;
+    }
+
+    double fps() const { return fps_counter_.fps(); }
+
+private:
+    std::shared_ptr<Model> model_;
+    FPSCounter fps_counter_;
+};
+
+int main() {
+    auto device = get_best_device();
+    InferenceService service("yolov8n.onnx", device);
+
+    cv::Mat image = cv::imread("test.jpg");
+    auto results = service.infer(image);
+
+    std::cout << "FPS: " << service.fps() << std::endl;
+    std::cout << "Detections: " << results.detections.size() << std::endl;
+
+    // Note: 完整的 Callback 系統可透過 Python API 使用
+
+    return 0;
+}
+```
+
+**完整範例**：`examples/cpp/backend_service.cpp`
+
+```bash
+# 建置與執行
+cd build && make backend_service
+./backend_service model.onnx --device cuda:0 --demo
+```
+
 ---
 
 ### 資料科學家
@@ -1238,6 +1639,91 @@ formats = {
 # 匯出範例
 exporter = ModelExporter(model, device)
 exporter.export("model.onnx", format="onnx", quantize="fp16")
+```
+
+#### C++ 範例
+
+```cpp
+#include "ivit/ivit.hpp"
+#include <opencv2/opencv.hpp>
+#include <map>
+#include <numeric>
+
+using namespace ivit;
+
+int main() {
+    // Step 1: 系統探索
+    auto devices = list_devices();
+    std::cout << "Available devices: " << devices.size() << std::endl;
+    for (const auto& dev : devices) {
+        std::cout << "  - " << dev.id << ": " << dev.name << std::endl;
+    }
+
+    // Note: Model Zoo 可透過 Python API 使用 (ivit.zoo.list_models())
+
+    // Step 2: 載入模型（使用 load_model API）
+    auto device = get_best_device();
+    LoadConfig config;
+    config.device = device.id;
+    auto model = load_model("yolov8n.onnx", config);
+
+    // Step 3: 結果分析
+    cv::Mat image = cv::imread("test.jpg");
+    auto results = model->predict(image);
+
+    std::cout << "Detection count: " << results.detections.size() << std::endl;
+    std::cout << "Inference time: " << results.inference_time_ms << " ms" << std::endl;
+
+    // 過濾與統計
+    std::map<std::string, int> class_counts;
+    int high_conf_count = 0;
+
+    for (const auto& det : results.detections) {
+        class_counts[det.label]++;
+        if (det.confidence > 0.9) high_conf_count++;
+
+        std::cout << "  " << det.label << ": "
+                  << (det.confidence * 100) << "%" << std::endl;
+    }
+
+    std::cout << "\nClass distribution:" << std::endl;
+    for (const auto& [cls, count] : class_counts) {
+        std::cout << "  " << cls << ": " << count << std::endl;
+    }
+    std::cout << "High confidence (>90%): " << high_conf_count << std::endl;
+
+    // Step 4: 批次處理
+    std::vector<cv::Mat> batch_images;
+    for (int i = 0; i < 5; ++i) {
+        cv::Mat img(480, 640, CV_8UC3);
+        cv::randu(img, cv::Scalar(0), cv::Scalar(255));
+        batch_images.push_back(img);
+    }
+
+    std::vector<double> latencies;
+    int total_detections = 0;
+
+    for (const auto& img : batch_images) {
+        auto res = model->predict(img);
+        latencies.push_back(res.inference_time_ms);
+        total_detections += res.detections.size();
+    }
+
+    double avg_latency = std::accumulate(latencies.begin(), latencies.end(), 0.0) / latencies.size();
+    std::cout << "\nBatch stats:" << std::endl;
+    std::cout << "  Total detections: " << total_detections << std::endl;
+    std::cout << "  Avg latency: " << avg_latency << " ms" << std::endl;
+
+    return 0;
+}
+```
+
+**完整範例**：`examples/cpp/data_analysis.cpp`
+
+```bash
+# 建置與執行
+cd build && make data_analysis
+./data_analysis model.onnx image.jpg --batch
 ```
 
 ---

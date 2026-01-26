@@ -57,8 +57,11 @@ class InferConfig:
     """Inference configuration."""
     conf_threshold: float = 0.5
     iou_threshold: float = 0.45
-    max_detections: int = 100
+    max_detections: int = 300
     classes: Optional[List[int]] = None
+    imgsz: Optional[int] = None
+    half: bool = False
+    augment: bool = False
     enable_profiling: bool = False
 
 
