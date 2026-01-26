@@ -1,0 +1,11 @@
+{
+  "inference_time_ms": 9.831,
+  "device_used": "cuda:0",
+  "image_size": [1080, 810],
+  "detections": [
+    {"class_id": 0, "label": "person", "confidence": 0.890254, "bbox": {"x1": 670.417, "y1": 380.498, "x2": 809.929, "y2": 879.649}},
+    {"class_id": 0, "label": "person", "confidence": 0.883225, "bbox": {"x1": 221.689, "y1": 407.428, "x2": 343.789, "y2": 856.211}},
+    {"class_id": 0, "label": "person", "confidence": 0.878476, "bbox": {"x1": 50.6745, "y1": 397.322, "x2": 244.4, "y2": 905.371}},
+    {"class_id": 5, "label": "bus", "confidence": 0.842922, "bbox": {"x1": 31.5964, "y1": 230.7, "x2": 801.407, "y2": 775.806}}
+  ]
+}

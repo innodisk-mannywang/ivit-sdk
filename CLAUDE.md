@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 專案概述
 
+iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是宜鼎國際為其 AI 運算平台開發的統一電腦視覺推論與訓練 SDK。本 SDK 提供跨硬體平台的統一 API 介面，支援 Intel、NVIDIA、Qualcomm 三大廠商的 x86 和 ARM 硬體。
+
+> **iVIT 命名規則**：開頭的 "i" 代表 Innodisk，VIT 代表 Vision Intelligence Toolkit。
+
 本專案採用 AI 虛擬團隊協作開發模式，透過多角色分工提升開發效率與品質。
+
+## 核心功能
+
+- **統一推論 API**：一次開發，多平台部署
+- **電腦視覺任務**：分類、物件偵測、語意分割、姿態估計、人臉分析
+- **遷移式學習**：支援模型微調訓練
+- **多後端支援**：OpenVINO (Intel)、TensorRT (NVIDIA)、SNPE (Qualcomm)
+- **雙語 API**：Python 和 C++ 功能對等
 
 ## 虛擬開發團隊
 
@@ -20,51 +32,98 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 專案結構
 
 ```
-.claude/skills/          # 團隊角色技能定義
-docs/
-├── PRD/                 # 產品需求文件
-├── architecture/        # 架構文件 (ADR 格式)
-├── design/              # 設計文件
-└── test-plans/          # 測試計劃
-src/                     # 原始碼
-tests/                   # 測試程式碼
+ivit-sdk/
+├── include/ivit/           # C++ 公開標頭
+├── src/                    # C++ 實作
+│   ├── core/               # 核心引擎
+│   ├── runtime/            # 後端適配器 (OpenVINO, TensorRT, SNPE)
+│   ├── vision/             # 視覺任務
+│   └── train/              # 訓練功能
+├── python/ivit/            # Python 綁定
+├── models/                 # Model Zoo
+├── tests/                  # 測試程式碼
+├── examples/               # 範例程式
+├── docs/
+│   ├── PRD/                # 產品需求文件
+│   ├── architecture/       # 架構文件 (ADR 格式)
+│   ├── api/                # API 規格文件
+│   └── tutorials/          # 教學文件
+└── .claude/skills/         # 團隊角色技能定義
 ```
 
 ## 開發指令
 
 ```bash
-# 建置
-[待填入]
+# 建置 C++ 核心
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+
+# 建置 Python 套件
+pip install -e .
 
 # 測試
-[待填入]
+pytest tests/python/
+ctest --test-dir build
 
 # 執行單一測試
-[待填入]
+pytest tests/python/test_detector.py -v
 
 # Lint
-[待填入]
+flake8 python/
+clang-format -i src/**/*.cpp include/**/*.hpp
 ```
 
 ## 專案資訊
 
-- **專案名稱**：[待填入]
-- **專案描述**：[待填入]
-- **技術堆疊**：[待填入]
+- **專案名稱**：iVIT-SDK (Innodisk Vision Intelligence Toolkit)
+- **專案描述**：跨硬體平台的統一電腦視覺推論與訓練 SDK
+- **技術堆疊**：
+  - 語言：C++ 17、Python 3.9+
+  - 綁定：pybind11
+  - 後端：OpenVINO、TensorRT、SNPE、ONNX Runtime
+  - 建置：CMake、scikit-build
+  - 測試：pytest、Google Test
+
+## 硬體支援
+
+| 廠商 | 硬體類型 | 推論引擎 | x86 | ARM |
+|------|----------|----------|-----|-----|
+| Intel | CPU/iGPU/NPU/VPU | OpenVINO | ✅ | ✅ |
+| NVIDIA | dGPU/Jetson | TensorRT | ✅ | ✅ |
+| Qualcomm | Hexagon NPU | SNPE/QNN | - | ✅ |
+
+## 支援的模型任務
+
+| 任務 | 優先級 | 支援模型 |
+|------|--------|----------|
+| 圖像分類 | P0 | ResNet, EfficientNet, MobileNet |
+| 物件偵測 | P0 | YOLOv5/v8, SSD, Faster R-CNN |
+| 語意分割 | P0 | DeepLabV3, UNet, SegFormer |
+| 實例分割 | P1 | Mask R-CNN, YOLOv8-seg |
+| 姿態估計 | P1 | YOLOv8-pose, HRNet |
+| 人臉分析 | P1 | RetinaFace, ArcFace |
 
 ## 開發規範
 
 ### 程式碼
-- 主要語言：[待填入]
-- 風格指南：[待填入]
+- 主要語言：C++ 17、Python 3.9+
+- C++ 風格：Google C++ Style Guide
+- Python 風格：PEP 8、Black formatter
 - 測試覆蓋率目標：80%+
 
 ### Git
-- 分支策略：Git Flow / GitHub Flow
+- 分支策略：GitHub Flow
 - Commit 格式：Conventional Commits
 - Code Review：必要
 
 ### 文件
-- 需求文件：PRD 格式
-- 架構文件：ADR (Architecture Decision Records)
-- API 文件：OpenAPI / Swagger
+- 需求文件：PRD 格式 (`docs/PRD/`)
+- 架構文件：ADR (Architecture Decision Records) (`docs/architecture/`)
+- API 文件：`docs/api/`
+
+## 相關文件
+
+- [PRD-001: iVIT-SDK 產品需求文件](docs/PRD/PRD-001-ivit-sdk.md)
+- [ADR-001: 系統架構設計](docs/architecture/ADR-001-system-architecture.md)
+- [API-SPEC-001: API 規格文件](docs/api/API-SPEC-001-ivit-sdk.md)
