@@ -31,3 +31,40 @@ logs/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# ===========================================
+# iVIT-SDK specific
+# ===========================================
+
+# Compiled Python extensions
+*.so
+*.pyd
+
+# Downloaded models and dependencies
+models/
+deps/
+
+# Example outputs
+bus_result.jpg
+*_output.jpg
+*_result.jpg
+test_images/output*.jpg
+test_images/output*.json
+test_images/*_result.mp4
+
+# TensorRT engines (generated)
+*.engine
+*.trt
+*.plan
+
+# OpenVINO IR cache
+*.blob
+model_cache/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# pytest cache
+.pytest_cache/
+.coverage
+htmlcov/
