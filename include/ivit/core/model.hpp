@@ -13,6 +13,9 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <mutex>
+#include <future>
+#include <functional>
 
 namespace ivit {
 
@@ -142,6 +145,49 @@ public:
      * @param iterations Number of warmup iterations
      */
     virtual void warmup(int iterations = 3) = 0;
+
+    // ========================================================================
+    // Async Inference
+    // ========================================================================
+
+    /**
+     * @brief Run inference asynchronously
+     *
+     * @param image Input image (BGR format)
+     * @param config Inference configuration
+     * @return Future containing inference results
+     */
+    virtual std::future<Results> predict_async(
+        const cv::Mat& image,
+        const InferConfig& config = InferConfig{}
+    );
+
+    /**
+     * @brief Run batch inference asynchronously
+     *
+     * @param images Vector of input images
+     * @param config Inference configuration
+     * @return Future containing vector of inference results
+     */
+    virtual std::future<std::vector<Results>> predict_batch_async(
+        const std::vector<cv::Mat>& images,
+        const InferConfig& config = InferConfig{}
+    );
+
+    /**
+     * @brief Submit inference with callback
+     *
+     * Fire-and-forget style inference that invokes callback when complete.
+     *
+     * @param image Input image
+     * @param callback Function called with results
+     * @param config Inference configuration
+     */
+    virtual void submit_inference(
+        const cv::Mat& image,
+        std::function<void(Results)> callback,
+        const InferConfig& config = InferConfig{}
+    );
 };
 
 /**
@@ -192,6 +238,7 @@ private:
     ModelManager() = default;
     ~ModelManager() = default;
 
+    mutable std::mutex mutex_;           ///< Mutex for thread-safe cache access
     std::string cache_dir_;
     std::map<std::string, std::shared_ptr<Model>> cache_;
 };

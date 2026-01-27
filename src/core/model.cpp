@@ -7,7 +7,11 @@
 #include "ivit/runtime/runtime.hpp"
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/dnn.hpp>
 #include <chrono>
+#include <thread>
+#include <iostream>
+#include <unordered_map>
 
 namespace ivit {
 
@@ -97,11 +101,97 @@ public:
         const std::vector<cv::Mat>& images,
         const InferConfig& config
     ) override {
+        if (images.empty()) {
+            return {};
+        }
+
         std::vector<Results> results_list;
         results_list.reserve(images.size());
 
-        // For now, process images sequentially
-        // TODO: Implement true batch inference
+        // Check if model supports dynamic batch
+        bool supports_batch = false;
+        if (!input_info_.empty()) {
+            int64_t batch_dim = input_info_[0].shape[0];
+            supports_batch = (batch_dim == -1 || batch_dim == 0);
+        }
+
+        if (supports_batch && images.size() > 1) {
+            // True batch inference
+            auto start = std::chrono::high_resolution_clock::now();
+
+            // Collect original sizes
+            std::vector<cv::Size> orig_sizes;
+            orig_sizes.reserve(images.size());
+            for (const auto& img : images) {
+                orig_sizes.push_back(img.size());
+            }
+
+            // Batch preprocess: preprocess each image and concatenate
+            std::vector<std::map<std::string, Tensor>> all_inputs;
+            for (const auto& img : images) {
+                all_inputs.push_back(preprocess(img));
+            }
+
+            // Merge tensors into batch
+            const auto& info = input_info_[0];
+            auto shape = info.shape;
+            shape[0] = static_cast<int64_t>(images.size());  // Set batch dimension
+
+            Tensor batched_input(shape, info.dtype);
+            batched_input.set_name(info.name);
+            batched_input.set_layout(Layout::NCHW);
+
+            // Copy each preprocessed image into the batch tensor
+            size_t single_size = batched_input.byte_size() / images.size();
+            char* batch_ptr = static_cast<char*>(batched_input.data());
+
+            for (size_t i = 0; i < all_inputs.size(); i++) {
+                const auto& single_tensor = all_inputs[i].begin()->second;
+                std::memcpy(batch_ptr + i * single_size, single_tensor.data(), single_size);
+            }
+
+            // Single batch inference call
+            std::map<std::string, Tensor> batch_inputs;
+            batch_inputs[info.name] = std::move(batched_input);
+            auto outputs = runtime_->infer(handle_, batch_inputs);
+
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+            float total_time = duration.count() / 1000.0f;
+            float avg_time = total_time / images.size();
+
+            // Batch postprocess: extract each sample's output and process
+            for (size_t i = 0; i < images.size(); i++) {
+                Results results;
+                results.image_size = orig_sizes[i];
+                results.device_used = device_;
+
+                // Extract single sample outputs from batch
+                std::map<std::string, Tensor> sample_outputs;
+                for (const auto& [name, tensor] : outputs) {
+                    // Create tensor for single sample
+                    auto out_shape = tensor.shape();
+                    out_shape[0] = 1;  // Single sample
+                    Tensor sample_tensor(out_shape, tensor.dtype());
+                    sample_tensor.set_name(name);
+
+                    // Copy data for this sample
+                    size_t sample_size = sample_tensor.byte_size();
+                    const char* src = static_cast<const char*>(tensor.data()) + i * sample_size;
+                    std::memcpy(sample_tensor.data(), src, sample_size);
+
+                    sample_outputs[name] = std::move(sample_tensor);
+                }
+
+                postprocess(sample_outputs, orig_sizes[i], config, results);
+                results.inference_time_ms = avg_time;
+                results_list.push_back(std::move(results));
+            }
+
+            return results_list;
+        }
+
+        // Fallback: sequential processing for models with fixed batch size
         for (const auto& image : images) {
             results_list.push_back(predict(image, config));
         }
@@ -392,32 +482,59 @@ private:
         std::vector<Detection>& detections,
         float iou_threshold
     ) {
-        // Sort by confidence
-        std::sort(detections.begin(), detections.end(),
+        if (detections.empty()) {
+            return {};
+        }
+
+        if (detections.size() == 1) {
+            return detections;
+        }
+
+        // Group detections by class for per-class NMS
+        std::unordered_map<int, std::vector<size_t>> class_indices;
+        for (size_t i = 0; i < detections.size(); i++) {
+            class_indices[detections[i].class_id].push_back(i);
+        }
+
+        std::vector<Detection> result;
+        result.reserve(detections.size());
+
+        // Process each class separately using OpenCV NMS
+        for (auto& [class_id, indices] : class_indices) {
+            if (indices.empty()) continue;
+
+            // Prepare boxes and scores for this class
+            std::vector<cv::Rect> boxes;
+            std::vector<float> scores;
+            boxes.reserve(indices.size());
+            scores.reserve(indices.size());
+
+            for (size_t idx : indices) {
+                const auto& det = detections[idx];
+                boxes.emplace_back(
+                    static_cast<int>(det.bbox.x1),
+                    static_cast<int>(det.bbox.y1),
+                    static_cast<int>(det.bbox.x2 - det.bbox.x1),
+                    static_cast<int>(det.bbox.y2 - det.bbox.y1)
+                );
+                scores.push_back(det.confidence);
+            }
+
+            // Use OpenCV's optimized NMS
+            std::vector<int> keep_indices;
+            cv::dnn::NMSBoxes(boxes, scores, 0.0f, iou_threshold, keep_indices);
+
+            // Collect kept detections
+            for (int keep_idx : keep_indices) {
+                result.push_back(detections[indices[keep_idx]]);
+            }
+        }
+
+        // Sort final results by confidence
+        std::sort(result.begin(), result.end(),
             [](const Detection& a, const Detection& b) {
                 return a.confidence > b.confidence;
             });
-
-        std::vector<Detection> result;
-        std::vector<bool> suppressed(detections.size(), false);
-
-        for (size_t i = 0; i < detections.size(); i++) {
-            if (suppressed[i]) continue;
-
-            result.push_back(detections[i]);
-
-            for (size_t j = i + 1; j < detections.size(); j++) {
-                if (suppressed[j]) continue;
-
-                // Only suppress same class
-                if (detections[i].class_id != detections[j].class_id) continue;
-
-                float iou = detections[i].bbox.iou(detections[j].bbox);
-                if (iou > iou_threshold) {
-                    suppressed[j] = true;
-                }
-            }
-        }
 
         return result;
     }
@@ -448,6 +565,59 @@ Results Model::predict(
 }
 
 // ============================================================================
+// Async Inference implementations
+// ============================================================================
+
+std::future<Results> Model::predict_async(
+    const cv::Mat& image,
+    const InferConfig& config
+) {
+    // Capture image by value to ensure it remains valid
+    cv::Mat image_copy = image.clone();
+
+    return std::async(std::launch::async, [this, image_copy, config]() {
+        return this->predict(image_copy, config);
+    });
+}
+
+std::future<std::vector<Results>> Model::predict_batch_async(
+    const std::vector<cv::Mat>& images,
+    const InferConfig& config
+) {
+    // Copy images to ensure they remain valid
+    std::vector<cv::Mat> images_copy;
+    images_copy.reserve(images.size());
+    for (const auto& img : images) {
+        images_copy.push_back(img.clone());
+    }
+
+    return std::async(std::launch::async, [this, images_copy = std::move(images_copy), config]() {
+        return this->predict_batch(images_copy, config);
+    });
+}
+
+void Model::submit_inference(
+    const cv::Mat& image,
+    std::function<void(Results)> callback,
+    const InferConfig& config
+) {
+    // Fire-and-forget: launch async task that calls callback
+    cv::Mat image_copy = image.clone();
+
+    std::thread([this, image_copy, callback, config]() {
+        try {
+            Results results = this->predict(image_copy, config);
+            if (callback) {
+                callback(std::move(results));
+            }
+        } catch (const std::exception& e) {
+            // Log error but don't propagate - this is fire-and-forget
+            std::cerr << "[iVIT] Async inference error: " << e.what() << std::endl;
+        }
+    }).detach();
+}
+
+// ============================================================================
 // ModelManager implementation
 // ============================================================================
 
@@ -460,14 +630,18 @@ std::shared_ptr<Model> ModelManager::load(
     const std::string& path,
     const LoadConfig& config
 ) {
-    // Check cache
     std::string cache_key = path + "_" + config.device + "_" + config.backend;
-    auto it = cache_.find(cache_key);
-    if (it != cache_.end() && config.use_cache) {
-        return it->second;
+
+    // Thread-safe cache lookup
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = cache_.find(cache_key);
+        if (it != cache_.end() && config.use_cache) {
+            return it->second;
+        }
     }
 
-    // Get appropriate runtime
+    // Get appropriate runtime (outside lock to avoid holding mutex during load)
     auto& factory = RuntimeFactory::instance();
     auto runtime = factory.get_best_runtime(path, config.device);
 
@@ -490,7 +664,7 @@ std::shared_ptr<Model> ModelManager::load(
 
     rt_config.cache_dir = config.cache_dir.empty() ? cache_dir_ : config.cache_dir;
 
-    // Load model
+    // Load model (potentially time-consuming, done outside lock)
     void* handle = runtime->load_model(path, rt_config);
 
     // Determine task type
@@ -512,9 +686,17 @@ std::shared_ptr<Model> ModelManager::load(
         config.device
     );
 
-    // Cache model
+    // Thread-safe cache insertion
     if (config.use_cache) {
-        cache_[cache_key] = model;
+        std::lock_guard<std::mutex> lock(mutex_);
+        // Double-check if another thread already inserted
+        auto it = cache_.find(cache_key);
+        if (it == cache_.end()) {
+            cache_[cache_key] = model;
+        } else {
+            // Another thread loaded first, return that one instead
+            return it->second;
+        }
     }
 
     return model;
@@ -540,10 +722,12 @@ void ModelManager::convert(
 }
 
 void ModelManager::clear_cache() {
+    std::lock_guard<std::mutex> lock(mutex_);
     cache_.clear();
 }
 
 void ModelManager::set_cache_dir(const std::string& path) {
+    std::lock_guard<std::mutex> lock(mutex_);
     cache_dir_ = path;
 }
 

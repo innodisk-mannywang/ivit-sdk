@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <chrono>
 #include <fstream>
 #include <filesystem>
 
@@ -164,11 +165,94 @@ std::vector<Results> Classifier::predict_batch(
     const std::vector<cv::Mat>& images,
     int top_k
 ) {
+    if (images.empty()) {
+        return {};
+    }
+
     std::vector<Results> results_list;
     results_list.reserve(images.size());
 
-    // TODO: Implement true batch inference
-    // For now, process images sequentially
+    // Check if model supports dynamic batch
+    auto input_info = model_->input_info();
+    bool supports_batch = false;
+    if (!input_info.empty()) {
+        int64_t batch_dim = input_info[0].shape[0];
+        supports_batch = (batch_dim == -1 || batch_dim == 0);
+    }
+
+    if (supports_batch && images.size() > 1) {
+        // True batch inference
+        auto start = std::chrono::high_resolution_clock::now();
+
+        // Preprocess all images
+        std::vector<cv::Mat> processed_images;
+        processed_images.reserve(images.size());
+        for (const auto& img : images) {
+            processed_images.push_back(preprocess(img));
+        }
+
+        // Create batch input tensor
+        const auto& info = input_info[0];
+        auto shape = info.shape;
+        shape[0] = static_cast<int64_t>(images.size());  // Set batch dimension
+
+        Tensor batch_input(shape, DataType::Float32);
+        batch_input.set_name(info.name);
+
+        // Copy preprocessed data into batch tensor
+        size_t single_size = batch_input.byte_size() / images.size();
+        char* batch_ptr = static_cast<char*>(batch_input.data());
+
+        for (size_t i = 0; i < processed_images.size(); i++) {
+            std::memcpy(batch_ptr + i * single_size,
+                       processed_images[i].data,
+                       single_size);
+        }
+
+        // Run batch inference
+        std::map<std::string, Tensor> inputs;
+        inputs[info.name] = std::move(batch_input);
+        auto outputs = model_->infer_raw(inputs);
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        float total_time = duration.count() / 1000.0f;
+        float avg_time = total_time / images.size();
+
+        // Batch postprocess: extract each sample's output
+        if (!outputs.empty()) {
+            const Tensor& output = outputs.begin()->second;
+            const std::string& output_name = outputs.begin()->first;
+            int64_t num_classes = output.shape().back();
+
+            for (size_t i = 0; i < images.size(); i++) {
+                // Create single sample output tensor
+                std::vector<int64_t> sample_shape = output.shape();
+                sample_shape[0] = 1;
+                Tensor sample_output(sample_shape, output.dtype());
+                sample_output.set_name(output_name);
+
+                // Copy data for this sample
+                size_t sample_size = sample_output.byte_size();
+                const char* src = static_cast<const char*>(output.data()) + i * sample_size;
+                std::memcpy(sample_output.data(), src, sample_size);
+
+                // Postprocess
+                std::map<std::string, Tensor> sample_outputs;
+                sample_outputs[output_name] = std::move(sample_output);
+
+                Results results = postprocess(sample_outputs, top_k);
+                results.inference_time_ms = avg_time;
+                results.device_used = model_->device();
+                results.image_size = images[i].size();
+                results_list.push_back(std::move(results));
+            }
+        }
+
+        return results_list;
+    }
+
+    // Fallback: sequential processing for models with fixed batch size
     for (const auto& image : images) {
         results_list.push_back(predict(image, top_k));
     }

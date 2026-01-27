@@ -32,10 +32,27 @@ struct DeviceInfo {
  */
 struct DeviceStatus {
     std::string id;                         ///< Device ID
-    float utilization = 0;                  ///< Utilization (0.0 - 1.0)
+    std::string name;                       ///< Device name
+    std::string backend;                    ///< Backend name
+    std::string compute_capability;         ///< Compute capability (CUDA only)
+
+    // Memory status
+    size_t memory_total = 0;                ///< Total memory in bytes
     size_t memory_used = 0;                 ///< Memory used in bytes
+    size_t memory_free = 0;                 ///< Free memory in bytes
+    float memory_utilization = 0;           ///< Memory utilization percentage (0-100)
+
+    // Utilization (requires NVML for CUDA)
+    float utilization = 0;                  ///< GPU utilization (0.0 - 100.0)
     float temperature = 0;                  ///< Temperature in Celsius
     float power_usage = 0;                  ///< Power usage in Watts
+
+    // Precision support
+    bool supports_fp32 = false;             ///< FP32 precision support
+    bool supports_fp16 = false;             ///< FP16 precision support
+    bool supports_int8 = false;             ///< INT8 precision support
+
+    bool is_available = false;              ///< Whether device is available
 };
 
 /**
@@ -97,7 +114,7 @@ private:
     void discover_devices();
     void discover_openvino_devices();
     void discover_tensorrt_devices();
-    void discover_snpe_devices();
+    void discover_qnn_devices();
 
     std::vector<DeviceInfo> devices_;
     bool initialized_ = false;
@@ -115,7 +132,9 @@ private:
  *   "gpu:0" -> (OpenVINO, GPU.0)
  *   "cuda:0" -> (TensorRT, 0)
  *   "npu" -> (OpenVINO, NPU)
- *   "hexagon" -> (SNPE, DSP)
+ *   "iq9" -> (QNN, HTP)  // Qualcomm IQ9 Series
+ *   "iq8" -> (QNN, HTP)  // Qualcomm IQ8 Series
+ *   "iq6" -> (QNN, HTP)  // Qualcomm IQ6 Series
  */
 std::pair<BackendType, std::string> parse_device_string(const std::string& device);
 
@@ -140,9 +159,9 @@ int cuda_device_count();
 bool openvino_is_available();
 
 /**
- * @brief Check if SNPE is available
+ * @brief Check if QNN (Qualcomm AI Engine Direct) is available
  */
-bool snpe_is_available();
+bool qnn_is_available();
 
 } // namespace ivit
 

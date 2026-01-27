@@ -4,6 +4,7 @@
  */
 
 #include "ivit/runtime/tensorrt_runtime.hpp"
+#include "ivit/ivit.hpp"
 
 #ifdef IVIT_HAS_TENSORRT
 
@@ -20,8 +21,36 @@ namespace ivit {
 // ============================================================================
 
 void TensorRTLogger::log(Severity severity, const char* msg) noexcept {
-    // Filter out info messages unless verbose mode is on
-    if (severity == Severity::kINFO && !verbose_) {
+    // Get global log level
+    LogLevel log_level = get_parsed_log_level();
+
+    // Map TensorRT severity to our log level filtering
+    // TensorRT: kINTERNAL_ERROR=0, kERROR=1, kWARNING=2, kINFO=3, kVERBOSE=4
+    bool should_log = false;
+    switch (log_level) {
+        case LogLevel::DEBUG:
+            should_log = true;  // Log everything
+            break;
+        case LogLevel::INFO:
+            should_log = (severity <= Severity::kINFO);
+            break;
+        case LogLevel::WARNING:
+            should_log = (severity <= Severity::kWARNING);
+            break;
+        case LogLevel::ERROR:
+            should_log = (severity <= Severity::kERROR);
+            break;
+        case LogLevel::OFF:
+            should_log = false;
+            break;
+    }
+
+    // Also respect verbose_ flag for backward compatibility
+    if (severity == Severity::kVERBOSE && !verbose_) {
+        should_log = false;
+    }
+
+    if (!should_log) {
         return;
     }
 
@@ -35,9 +64,9 @@ void TensorRTLogger::log(Severity severity, const char* msg) noexcept {
     }
 
     if (severity <= Severity::kWARNING) {
-        std::cerr << "TensorRT " << severity_str << ": " << msg << std::endl;
-    } else if (verbose_) {
-        std::cout << "TensorRT " << severity_str << ": " << msg << std::endl;
+        std::cerr << "[TRT] " << severity_str << " " << msg << std::endl;
+    } else {
+        std::cout << "[TRT] " << severity_str << " " << msg << std::endl;
     }
 }
 
@@ -270,13 +299,17 @@ std::map<std::string, Tensor> TensorRTRuntime::infer(
         }
 
         const Tensor& input = it->second;
-        cudaMemcpyAsync(
+        cudaError_t copy_err = cudaMemcpyAsync(
             engine->device_buffers[i],
             input.data(),
             input.byte_size(),
             cudaMemcpyHostToDevice,
             engine->stream
         );
+        if (copy_err != cudaSuccess) {
+            throw InferenceError(std::string("Failed to copy input to device: ") +
+                                 cudaGetErrorString(copy_err));
+        }
     }
 
     // Run inference (TensorRT 10 API uses enqueueV3)
@@ -295,19 +328,27 @@ std::map<std::string, Tensor> TensorRTRuntime::infer(
         Tensor output(info.shape, info.dtype);
         output.set_name(info.name);
 
-        cudaMemcpyAsync(
+        cudaError_t copy_err = cudaMemcpyAsync(
             output.data(),
             engine->device_buffers[input_count + i],
             output.byte_size(),
             cudaMemcpyDeviceToHost,
             engine->stream
         );
+        if (copy_err != cudaSuccess) {
+            throw InferenceError(std::string("Failed to copy output to host: ") +
+                                 cudaGetErrorString(copy_err));
+        }
 
         outputs[info.name] = std::move(output);
     }
 
-    // Synchronize
-    cudaStreamSynchronize(engine->stream);
+    // Synchronize with error checking
+    cudaError_t sync_err = cudaStreamSynchronize(engine->stream);
+    if (sync_err != cudaSuccess) {
+        throw InferenceError(std::string("CUDA stream synchronization failed: ") +
+                             cudaGetErrorString(sync_err));
+    }
 
     return outputs;
 }
@@ -500,13 +541,18 @@ TensorRTEngine* TensorRTRuntime::create_engine_wrapper(
         throw IVITError("Failed to create execution context");
     }
 
-    // Create CUDA stream
-    cudaStreamCreate(&wrapper->stream);
+    // Create CUDA stream with error checking
+    cudaError_t stream_err = cudaStreamCreate(&wrapper->stream);
+    if (stream_err != cudaSuccess) {
+        delete wrapper;
+        throw IVITError(std::string("Failed to create CUDA stream: ") +
+                        cudaGetErrorString(stream_err));
+    }
 
     // Get IO tensor info (TensorRT 10 API)
     int num_io_tensors = engine->getNbIOTensors();
     wrapper->bindings.resize(num_io_tensors);
-    wrapper->device_buffers.resize(num_io_tensors);
+    wrapper->device_buffers.resize(num_io_tensors, nullptr);  // Initialize to nullptr
 
     for (int i = 0; i < num_io_tensors; i++) {
         const char* name = engine->getIOTensorName(i);
@@ -532,9 +578,21 @@ TensorRTEngine* TensorRTRuntime::create_engine_wrapper(
             info.layout = Layout::Unknown;
         }
 
-        // Allocate device buffer
+        // Allocate device buffer with error checking
         size_t buffer_size = info.byte_size();
-        cudaMalloc(&wrapper->device_buffers[i], buffer_size);
+        cudaError_t malloc_err = cudaMalloc(&wrapper->device_buffers[i], buffer_size);
+        if (malloc_err != cudaSuccess) {
+            // Cleanup already allocated buffers
+            for (int j = 0; j < i; j++) {
+                if (wrapper->device_buffers[j]) {
+                    cudaFree(wrapper->device_buffers[j]);
+                }
+            }
+            delete wrapper;
+            throw IVITError(std::string("Failed to allocate CUDA memory (") +
+                            std::to_string(buffer_size) + " bytes): " +
+                            cudaGetErrorString(malloc_err));
+        }
         wrapper->bindings[i] = wrapper->device_buffers[i];
 
         // Set tensor address in context

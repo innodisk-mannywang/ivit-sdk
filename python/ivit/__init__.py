@@ -1,23 +1,28 @@
 """
 iVIT-SDK: Innodisk Vision Intelligence Toolkit
 
-Unified Computer Vision SDK for Intel/NVIDIA/Qualcomm platforms.
+Unified Computer Vision SDK with extensible hardware support.
+Currently supports Intel (OpenVINO) and NVIDIA (TensorRT) platforms.
+
+Key Features:
+- Automatic device selection based on current platform
+- Vendor-aware priority (NVIDIA dGPU > Intel iGPU > NPU > CPU)
+- Multiple selection strategies (latency, efficiency, balanced)
 
 Example:
     >>> import ivit
     >>>
-    >>> # One-liner inference (Ultralytics-style)
-    >>> model = ivit.load("yolov8n.onnx")
+    >>> # One-liner inference (auto device selection)
+    >>> model = ivit.load("yolov8n.onnx")  # Auto-selects best device
     >>> results = model("image.jpg")
     >>> results.show()
     >>>
-    >>> # Device selection
-    >>> ivit.devices()                     # List all devices
-    >>> ivit.devices.cuda()                # Get CUDA device
-    >>> ivit.devices.best()                # Auto-select best
+    >>> # Device selection strategies
+    >>> ivit.devices.best()                    # Default: latency-optimized
+    >>> ivit.devices.best(strategy="efficiency")  # Power-efficient (NPU preferred)
     >>>
     >>> # Use specific device
-    >>> model = ivit.load("model.onnx", device=ivit.devices.npu())
+    >>> model = ivit.load("model.onnx", device="cuda:0")
     >>>
     >>> # Task-specific classes
     >>> detector = ivit.Detector("yolov8n.onnx", device="cuda:0")
@@ -30,6 +35,21 @@ __author__ = "Innodisk AI Team"
 
 # Try to import C++ bindings
 _HAS_CPP_BINDING = False
+
+# Pre-load libivit.so if it exists in the package directory
+# This is needed because the binding module depends on libivit.so
+import os as _os
+import ctypes as _ctypes
+
+_package_dir = _os.path.dirname(_os.path.abspath(__file__))
+_libivit_path = _os.path.join(_package_dir, "libivit.so")
+
+if _os.path.exists(_libivit_path):
+    try:
+        _ctypes.CDLL(_libivit_path, mode=_ctypes.RTLD_GLOBAL)
+    except OSError:
+        pass  # Failed to load, will fall back to pure Python
+
 try:
     from ._ivit_core import (
         # Enums
@@ -84,6 +104,7 @@ except ImportError:
         InferConfig,
         TensorInfo,
         DeviceInfo,
+        SelectionStrategy,
         BBox,
         Detection,
         ClassificationResult,
@@ -109,20 +130,15 @@ except ImportError:
     # Alias for compatibility with C++ binding
     UnsupportedFormatError = UnsupportedOperationError
 
-    # Placeholder functions
+    # Import device functions from Python core
+    from .core.device import (
+        list_devices,
+        get_best_device,
+        get_device,
+    )
+
     def version():
         return __version__
-
-    def list_devices():
-        return []
-
-    def get_best_device(task="", priority="performance"):
-        return DeviceInfo(
-            id="cpu",
-            name="CPU (Fallback)",
-            backend="onnxruntime",
-            type="cpu"
-        )
 
 
 def is_cpp_available():

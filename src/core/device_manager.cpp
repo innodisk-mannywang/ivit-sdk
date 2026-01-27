@@ -3,6 +3,7 @@
  * @brief Device manager implementation
  */
 
+#include "ivit/ivit.hpp"
 #include "ivit/core/device.hpp"
 #include "ivit/runtime/runtime.hpp"
 #include <algorithm>
@@ -103,8 +104,112 @@ DeviceStatus DeviceManager::get_device_status(const std::string& device_id) {
     DeviceStatus status;
     status.id = device_id;
 
-    // TODO: Implement actual status retrieval
-    // This would query the specific backend for device statistics
+    // Determine backend from device
+    auto [backend, device_index] = parse_device_string(device_id);
+
+    switch (backend) {
+        case BackendType::TensorRT:
+#ifdef IVIT_HAS_TENSORRT
+            {
+                // Get CUDA device index
+                int dev_idx = device_index.empty() ? 0 : std::stoi(device_index);
+
+                // Set device and query properties
+                cudaError_t err = cudaSetDevice(dev_idx);
+                if (err != cudaSuccess) {
+                    status.is_available = false;
+                    break;
+                }
+
+                // Query device properties for name
+                cudaDeviceProp props;
+                if (cudaGetDeviceProperties(&props, dev_idx) == cudaSuccess) {
+                    status.name = props.name;
+                    status.compute_capability = std::to_string(props.major) + "." +
+                                                std::to_string(props.minor);
+                }
+
+                // Query memory info
+                size_t free_mem = 0, total_mem = 0;
+                if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess) {
+                    status.memory_total = total_mem;
+                    status.memory_used = total_mem - free_mem;
+                    status.memory_free = free_mem;
+                    // Calculate utilization percentage
+                    if (total_mem > 0) {
+                        status.memory_utilization = static_cast<float>(status.memory_used) /
+                                                    static_cast<float>(total_mem) * 100.0f;
+                    }
+                }
+
+                status.is_available = true;
+                status.backend = "tensorrt";
+
+                // Note: GPU utilization, temperature, and power require NVML library
+                // which is not included as a dependency to keep the SDK lightweight.
+                // Users can query these metrics separately using nvidia-smi or NVML.
+            }
+#endif
+            break;
+
+        case BackendType::OpenVINO:
+#ifdef IVIT_HAS_OPENVINO
+            try {
+                ov::Core core;
+
+                // Map device_id to OpenVINO device name
+                std::string ov_device;
+                if (device_id == "cpu") {
+                    ov_device = "CPU";
+                } else if (device_id == "gpu:0" || device_id == "gpu") {
+                    ov_device = "GPU";
+                } else if (device_id == "npu") {
+                    ov_device = "NPU";
+                } else {
+                    ov_device = "CPU";
+                }
+
+                // Query device full name
+                try {
+                    status.name = core.get_property(ov_device, ov::device::full_name);
+                } catch (...) {
+                    status.name = ov_device;
+                }
+
+                // Query available device capabilities
+                try {
+                    auto caps = core.get_property(ov_device, ov::device::capabilities);
+                    for (const auto& cap : caps) {
+                        if (cap == "FP16") status.supports_fp16 = true;
+                        if (cap == "INT8") status.supports_int8 = true;
+                        if (cap == "FP32") status.supports_fp32 = true;
+                    }
+                } catch (...) {
+                    // Capabilities query not supported
+                    status.supports_fp32 = true;  // Default
+                }
+
+                status.is_available = true;
+                status.backend = "openvino";
+
+            } catch (...) {
+                status.is_available = false;
+            }
+#endif
+            break;
+
+        case BackendType::ONNXRuntime:
+            // ONNX Runtime CPU is always available
+            status.name = "CPU (ONNX Runtime)";
+            status.is_available = true;
+            status.backend = "onnxruntime";
+            status.supports_fp32 = true;
+            break;
+
+        default:
+            status.is_available = false;
+            break;
+    }
 
     return status;
 }
@@ -128,8 +233,43 @@ bool DeviceManager::supports_format(
     const std::string& device_id,
     const std::string& format
 ) {
-    // TODO: Implement format support checking
-    return true;
+    // Determine backend from device
+    auto [backend, _] = parse_device_string(device_id);
+
+    // Normalize format string (ensure leading dot, lowercase)
+    std::string fmt = format;
+    if (!fmt.empty() && fmt[0] != '.') {
+        fmt = "." + fmt;
+    }
+    std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
+
+    // Define supported formats per backend
+    // [Future] Add new backend format support here
+    switch (backend) {
+        case BackendType::OpenVINO:
+            // OpenVINO supports IR format (.xml + .bin) and ONNX
+            return (fmt == ".xml" || fmt == ".bin" || fmt == ".onnx" || fmt == ".pdmodel");
+
+        case BackendType::TensorRT:
+            // TensorRT supports compiled engines and ONNX (for runtime compilation)
+            return (fmt == ".engine" || fmt == ".trt" || fmt == ".plan" || fmt == ".onnx");
+
+        case BackendType::ONNXRuntime:
+            // ONNX Runtime supports ONNX format
+            return (fmt == ".onnx");
+
+        case BackendType::QNN:
+            // QNN supports DLC (legacy SNPE), serialized context, and ONNX
+            return (fmt == ".dlc" || fmt == ".serialized" || fmt == ".bin" || fmt == ".onnx");
+
+        case BackendType::Auto:
+            // Auto backend - accept common formats
+            return (fmt == ".onnx" || fmt == ".xml" || fmt == ".engine" ||
+                    fmt == ".trt" || fmt == ".plan" || fmt == ".dlc");
+
+        default:
+            return false;
+    }
 }
 
 void DeviceManager::refresh() {
@@ -141,10 +281,22 @@ void DeviceManager::refresh() {
 void DeviceManager::discover_devices() {
     devices_.clear();
 
-    discover_openvino_devices();
-    discover_tensorrt_devices();
-    discover_snpe_devices();
+    // ========================================================================
+    // Device Discovery - Add new hardware platforms here
+    // ========================================================================
 
+    // Intel: OpenVINO (CPU, iGPU, NPU, VPU)
+    discover_openvino_devices();
+
+    // NVIDIA: TensorRT/CUDA (dGPU, Jetson)
+    discover_tensorrt_devices();
+
+    // [Future] Add new hardware platforms here:
+    // discover_xxx_devices();
+
+    // ========================================================================
+    // CPU Fallback - Always available via ONNX Runtime
+    // ========================================================================
     // Always add CPU fallback
     bool has_cpu = false;
     for (const auto& dev : devices_) {
@@ -252,13 +404,28 @@ void DeviceManager::discover_tensorrt_devices() {
 #endif
 }
 
-void DeviceManager::discover_snpe_devices() {
-#ifdef IVIT_HAS_SNPE
-    // SNPE device discovery
-    // This would use SNPE API to detect available compute units
-    // (CPU, GPU, DSP, HTP, etc.)
-#endif
-}
+// =============================================================================
+// Template for adding new hardware platforms
+// =============================================================================
+//
+// void DeviceManager::discover_xxx_devices() {
+// #ifdef IVIT_HAS_XXX
+//     try {
+//         // Use XXX SDK to enumerate devices
+//         for (int i = 0; i < xxx_device_count(); i++) {
+//             DeviceInfo info;
+//             info.id = "xxx:" + std::to_string(i);
+//             info.name = xxx_get_device_name(i);
+//             info.backend = "xxx";
+//             info.type = "npu";  // or "gpu", "cpu", etc.
+//             info.is_available = true;
+//             devices_.push_back(info);
+//         }
+//     } catch (...) {
+//         // XXX SDK not available
+//     }
+// #endif
+// }
 
 // ============================================================================
 // Helper functions
@@ -296,11 +463,15 @@ std::pair<BackendType, std::string> parse_device_string(const std::string& devic
         return {BackendType::OpenVINO, "MYRIAD"};
     }
 
-    if (dev_lower == "hexagon" || dev_lower == "dsp" || dev_lower == "htp") {
-        return {BackendType::SNPE, dev_lower};
+    // Qualcomm IQ Series (QCS9075, QCS8550, etc.) via QNN
+    // Support both iQ series names and internal Qualcomm names
+    if (dev_lower == "iq9" || dev_lower == "iq8" || dev_lower == "iq6" ||
+        dev_lower.rfind("iq", 0) == 0 ||  // Any "iq*" pattern
+        dev_lower == "hexagon" || dev_lower == "htp" || dev_lower == "dsp") {
+        return {BackendType::QNN, "HTP"};  // Hexagon Tensor Processor
     }
 
-    // Default to CPU
+    // Default to CPU (ONNX Runtime fallback)
     return {BackendType::ONNXRuntime, "CPU"};
 }
 
@@ -341,13 +512,22 @@ bool openvino_is_available() {
 #endif
 }
 
-bool snpe_is_available() {
-#ifdef IVIT_HAS_SNPE
-    return true;
-#else
-    return false;
-#endif
-}
+// =============================================================================
+// Template for new hardware platform availability check
+// =============================================================================
+//
+// bool xxx_is_available() {
+// #ifdef IVIT_HAS_XXX
+//     try {
+//         // Initialize XXX SDK and check availability
+//         return xxx_init() == XXX_SUCCESS;
+//     } catch (...) {
+//         return false;
+//     }
+// #else
+//     return false;
+// #endif
+// }
 
 // ============================================================================
 // Free functions (declared in ivit.hpp)
@@ -367,9 +547,107 @@ DeviceInfo get_best_device(
 // Global log level setting
 static std::string g_log_level = "info";
 
+static LogLevel parse_log_level(const std::string& level) {
+    std::string l = level;
+    std::transform(l.begin(), l.end(), l.begin(), ::tolower);
+
+    if (l == "debug" || l == "verbose") return LogLevel::DEBUG;
+    if (l == "info") return LogLevel::INFO;
+    if (l == "warning" || l == "warn") return LogLevel::WARNING;
+    if (l == "error") return LogLevel::ERROR;
+    if (l == "off" || l == "none") return LogLevel::OFF;
+
+    return LogLevel::INFO;  // Default
+}
+
+// Global log level for iVIT SDK
+static LogLevel g_parsed_log_level = LogLevel::INFO;
+
+LogLevel get_parsed_log_level() {
+    return g_parsed_log_level;
+}
+
+static void configure_openvino_logging([[maybe_unused]] LogLevel level) {
+#ifdef IVIT_HAS_OPENVINO
+    // OpenVINO logging can be configured via environment variables
+    // Set environment variable to control OpenVINO logging level
+    switch (level) {
+        case LogLevel::DEBUG:
+            setenv("OPENVINO_LOG_LEVEL", "0", 1);  // TRACE/DEBUG
+            break;
+        case LogLevel::INFO:
+            setenv("OPENVINO_LOG_LEVEL", "1", 1);  // INFO
+            break;
+        case LogLevel::WARNING:
+            setenv("OPENVINO_LOG_LEVEL", "2", 1);  // WARNING
+            break;
+        case LogLevel::ERROR:
+            setenv("OPENVINO_LOG_LEVEL", "3", 1);  // ERROR
+            break;
+        case LogLevel::OFF:
+            setenv("OPENVINO_LOG_LEVEL", "4", 1);  // NO_LOG
+            break;
+    }
+#endif
+}
+
+static void configure_tensorrt_logging([[maybe_unused]] LogLevel level) {
+#ifdef IVIT_HAS_TENSORRT
+    // TensorRT logging is configured through ILogger interface
+    // The TensorRT runtime uses a global logger that respects g_parsed_log_level
+    // (see tensorrt_runtime.cpp for TRTLogger implementation)
+    //
+    // TensorRT severity levels:
+    //   kINTERNAL_ERROR = 0  - internal errors
+    //   kERROR = 1           - errors
+    //   kWARNING = 2         - warnings
+    //   kINFO = 3            - informational messages
+    //   kVERBOSE = 4         - verbose debug messages
+    //
+    // The mapping is handled in TRTLogger::log() by checking g_parsed_log_level
+#endif
+}
+
+static void configure_onnxruntime_logging([[maybe_unused]] LogLevel level) {
+    // ONNX Runtime logging can be configured via environment variable
+    // ORT_LOG_LEVEL: VERBOSE=0, INFO=1, WARNING=2, ERROR=3, FATAL=4
+    switch (level) {
+        case LogLevel::DEBUG:
+            setenv("ORT_LOG_LEVEL", "0", 1);  // VERBOSE
+            break;
+        case LogLevel::INFO:
+            setenv("ORT_LOG_LEVEL", "1", 1);  // INFO
+            break;
+        case LogLevel::WARNING:
+            setenv("ORT_LOG_LEVEL", "2", 1);  // WARNING
+            break;
+        case LogLevel::ERROR:
+            setenv("ORT_LOG_LEVEL", "3", 1);  // ERROR
+            break;
+        case LogLevel::OFF:
+            setenv("ORT_LOG_LEVEL", "4", 1);  // FATAL (effectively off)
+            break;
+    }
+}
+
 void set_log_level(const std::string& level) {
     g_log_level = level;
-    // TODO: Actually configure logging
+    LogLevel parsed = parse_log_level(level);
+    g_parsed_log_level = parsed;
+
+    // Configure backend-specific logging
+    configure_openvino_logging(parsed);
+    configure_tensorrt_logging(parsed);
+    configure_onnxruntime_logging(parsed);
+
+    // Log the level change (if not turning off logging)
+    if (parsed != LogLevel::OFF && parsed != LogLevel::ERROR) {
+        std::cout << "[iVIT] Log level set to: " << level << std::endl;
+    }
+}
+
+std::string get_log_level() {
+    return g_log_level;
 }
 
 // Global cache directory

@@ -92,10 +92,33 @@ DeviceInfo get_best_device(
 );
 
 /**
+ * @brief Log level enumeration
+ */
+enum class LogLevel {
+    DEBUG,      ///< Verbose debug messages
+    INFO,       ///< Informational messages
+    WARNING,    ///< Warning messages
+    ERROR,      ///< Error messages
+    OFF         ///< No logging
+};
+
+/**
  * @brief Set global log level
- * @param level Log level: "debug", "info", "warning", "error"
+ * @param level Log level: "debug", "info", "warning", "error", "off"
  */
 void set_log_level(const std::string& level);
+
+/**
+ * @brief Get current log level string
+ * @return Current log level
+ */
+std::string get_log_level();
+
+/**
+ * @brief Get current parsed log level
+ * @return Current LogLevel enum value
+ */
+LogLevel get_parsed_log_level();
 
 /**
  * @brief Set global cache directory
