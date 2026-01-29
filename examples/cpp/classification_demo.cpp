@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <string>
+#include <iomanip>
 #include <opencv2/opencv.hpp>
 #include "ivit/vision/classifier.hpp"
 

@@ -4,6 +4,8 @@
  */
 
 #include "ivit/core/model.hpp"
+#include "ivit/core/runtime_config.hpp"
+#include "ivit/core/video_source.hpp"
 #include "ivit/runtime/runtime.hpp"
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -12,6 +14,7 @@
 #include <thread>
 #include <iostream>
 #include <unordered_map>
+#include <algorithm>
 
 namespace ivit {
 
@@ -615,6 +618,367 @@ void Model::submit_inference(
             std::cerr << "[iVIT] Async inference error: " << e.what() << std::endl;
         }
     }).detach();
+}
+
+// ============================================================================
+// Model destructor
+// ============================================================================
+
+Model::~Model() {
+    shutdown_async();
+}
+
+// ============================================================================
+// Concurrent Inference
+// ============================================================================
+
+std::vector<Results> Model::predict_concurrent(
+    const std::vector<cv::Mat>& images,
+    int max_concurrent,
+    const InferConfig& config
+) {
+    if (images.empty()) return {};
+
+    trigger_callback(CallbackEvent::BatchStart, 0.0, static_cast<int>(images.size()));
+
+    std::vector<std::future<Results>> futures;
+    futures.reserve(images.size());
+
+    // Use mutex + condition variable to limit concurrency (C++17 compatible)
+    std::mutex sem_mutex;
+    std::condition_variable sem_cv;
+    int active_count = 0;
+
+    for (const auto& image : images) {
+        cv::Mat img_copy = image.clone();
+        futures.push_back(std::async(std::launch::async,
+            [this, img_copy, &config, &sem_mutex, &sem_cv, &active_count, max_concurrent]() {
+                {
+                    std::unique_lock<std::mutex> lock(sem_mutex);
+                    sem_cv.wait(lock, [&]() { return active_count < max_concurrent; });
+                    ++active_count;
+                }
+                auto result = this->predict(img_copy, config);
+                {
+                    std::lock_guard<std::mutex> lock(sem_mutex);
+                    --active_count;
+                }
+                sem_cv.notify_one();
+                return result;
+            }
+        ));
+    }
+
+    std::vector<Results> results;
+    results.reserve(images.size());
+    for (auto& f : futures) {
+        results.push_back(f.get());
+    }
+
+    trigger_callback(CallbackEvent::BatchEnd, 0.0, static_cast<int>(images.size()));
+    return results;
+}
+
+// ============================================================================
+// Async Executor
+// ============================================================================
+
+void Model::ensure_executor() {
+    if (executor_running_.load()) return;
+
+    executor_running_.store(true);
+    executor_thread_ = std::make_unique<std::thread>([this]() {
+        while (executor_running_.load()) {
+            std::function<void()> task;
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex_);
+                queue_cv_.wait(lock, [this]() {
+                    return !task_queue_.empty() || !executor_running_.load();
+                });
+                if (!executor_running_.load() && task_queue_.empty()) return;
+                if (task_queue_.empty()) continue;
+                task = std::move(task_queue_.front());
+                task_queue_.pop();
+            }
+            task();
+        }
+    });
+}
+
+void Model::shutdown_async() {
+    if (!executor_running_.load()) return;
+
+    executor_running_.store(false);
+    queue_cv_.notify_all();
+
+    if (executor_thread_ && executor_thread_->joinable()) {
+        executor_thread_->join();
+    }
+    executor_thread_.reset();
+}
+
+// ============================================================================
+// Callback helpers
+// ============================================================================
+
+int Model::on(
+    const std::string& event,
+    std::function<void(const CallbackContext&)> callback,
+    int priority
+) {
+    return callbacks_.register_callback(event, std::move(callback), priority);
+}
+
+bool Model::remove_callback(const std::string& event, int callback_id) {
+    return callbacks_.unregister_callback(
+        callback_event_from_string(event), callback_id);
+}
+
+int Model::remove_all_callbacks(const std::string& event) {
+    return callbacks_.unregister_all(event);
+}
+
+void Model::trigger_callback(
+    CallbackEvent event,
+    double latency_ms,
+    int batch_size,
+    int frame_index,
+    const Results* results
+) {
+    if (!callbacks_.has_callbacks(event)) return;
+
+    CallbackContext ctx;
+    ctx.event = event;
+    ctx.model_name = name();
+    ctx.device = device();
+    ctx.latency_ms = latency_ms;
+    ctx.batch_size = batch_size;
+    ctx.frame_index = frame_index;
+    ctx.results = results;
+
+    callbacks_.trigger(ctx);
+}
+
+// ============================================================================
+// Hardware Configuration (default implementations - overridden by backends)
+// ============================================================================
+
+void Model::configure_openvino(const OpenVINOConfig& /*config*/) {
+    throw IVITError("OpenVINO configuration not supported by this model backend");
+}
+
+void Model::configure_tensorrt(const TensorRTConfig& /*config*/) {
+    throw IVITError("TensorRT configuration not supported by this model backend");
+}
+
+void Model::configure_onnxruntime(const ONNXRuntimeConfig& /*config*/) {
+    throw IVITError("ONNX Runtime configuration not supported by this model backend");
+}
+
+void Model::configure_qnn(const QNNConfig& /*config*/) {
+    throw IVITError("QNN configuration not supported by this model backend");
+}
+
+// ============================================================================
+// TTA (Test-Time Augmentation)
+// ============================================================================
+
+static cv::Mat apply_augmentation(const cv::Mat& image, const std::string& aug) {
+    if (aug == "original") {
+        return image.clone();
+    } else if (aug == "hflip") {
+        cv::Mat flipped;
+        cv::flip(image, flipped, 1);
+        return flipped;
+    } else if (aug == "vflip") {
+        cv::Mat flipped;
+        cv::flip(image, flipped, 0);
+        return flipped;
+    } else if (aug == "rotate90") {
+        cv::Mat rotated;
+        cv::rotate(image, rotated, cv::ROTATE_90_CLOCKWISE);
+        return rotated;
+    } else if (aug == "rotate180") {
+        cv::Mat rotated;
+        cv::rotate(image, rotated, cv::ROTATE_180);
+        return rotated;
+    } else if (aug == "rotate270") {
+        cv::Mat rotated;
+        cv::rotate(image, rotated, cv::ROTATE_90_COUNTERCLOCKWISE);
+        return rotated;
+    } else if (aug == "scale_up") {
+        cv::Mat scaled;
+        cv::resize(image, scaled, cv::Size(), 1.2, 1.2);
+        return scaled;
+    } else if (aug == "scale_down") {
+        cv::Mat scaled;
+        cv::resize(image, scaled, cv::Size(), 0.8, 0.8);
+        return scaled;
+    }
+    return image.clone();
+}
+
+static void reverse_bbox_augmentation(
+    Detection& det,
+    const std::string& aug,
+    int orig_w, int orig_h
+) {
+    auto& b = det.bbox;
+    if (aug == "hflip") {
+        float new_x1 = orig_w - b.x2;
+        float new_x2 = orig_w - b.x1;
+        b.x1 = new_x1;
+        b.x2 = new_x2;
+    } else if (aug == "vflip") {
+        float new_y1 = orig_h - b.y2;
+        float new_y2 = orig_h - b.y1;
+        b.y1 = new_y1;
+        b.y2 = new_y2;
+    }
+    // For rotations and scaling, more complex reverse transforms would be needed
+}
+
+Results Model::predict_tta(
+    const cv::Mat& image,
+    const std::vector<std::string>& augmentations,
+    const InferConfig& config
+) {
+    std::vector<Results> all_results;
+    all_results.reserve(augmentations.size());
+
+    int orig_w = image.cols;
+    int orig_h = image.rows;
+
+    for (const auto& aug : augmentations) {
+        cv::Mat augmented = apply_augmentation(image, aug);
+        Results result = predict(augmented, config);
+
+        // Reverse augmentation on detections
+        for (auto& det : result.detections) {
+            reverse_bbox_augmentation(det, aug, orig_w, orig_h);
+        }
+
+        all_results.push_back(std::move(result));
+    }
+
+    // Merge results using WBF-style approach
+    Results merged;
+    merged.image_size = image.size();
+    merged.device_used = device();
+
+    // For classifications: average scores
+    if (!all_results.empty() && !all_results[0].classifications.empty()) {
+        std::map<int, std::pair<float, std::string>> score_map;
+        for (const auto& r : all_results) {
+            for (const auto& cls : r.classifications) {
+                auto& entry = score_map[cls.class_id];
+                entry.first += cls.score;
+                entry.second = cls.label;
+            }
+        }
+        for (auto& [class_id, pair] : score_map) {
+            ClassificationResult cls;
+            cls.class_id = class_id;
+            cls.score = pair.first / static_cast<float>(all_results.size());
+            cls.label = pair.second;
+            merged.classifications.push_back(cls);
+        }
+        std::sort(merged.classifications.begin(), merged.classifications.end(),
+            [](const ClassificationResult& a, const ClassificationResult& b) {
+                return a.score > b.score;
+            });
+    }
+
+    // For detections: collect all and apply NMS
+    for (const auto& r : all_results) {
+        for (const auto& det : r.detections) {
+            merged.detections.push_back(det);
+        }
+    }
+    if (!merged.detections.empty()) {
+        // Re-apply NMS to merged detections
+        std::vector<cv::Rect> boxes;
+        std::vector<float> scores;
+        std::vector<int> class_ids;
+        for (const auto& det : merged.detections) {
+            boxes.emplace_back(
+                static_cast<int>(det.bbox.x1),
+                static_cast<int>(det.bbox.y1),
+                static_cast<int>(det.bbox.x2 - det.bbox.x1),
+                static_cast<int>(det.bbox.y2 - det.bbox.y1)
+            );
+            scores.push_back(det.confidence);
+            class_ids.push_back(det.class_id);
+        }
+        std::vector<int> keep;
+        cv::dnn::NMSBoxes(boxes, scores, config.conf_threshold, config.iou_threshold, keep);
+
+        std::vector<Detection> kept;
+        for (int idx : keep) {
+            kept.push_back(merged.detections[idx]);
+        }
+        merged.detections = std::move(kept);
+    }
+
+    return merged;
+}
+
+// ============================================================================
+// Video Streaming
+// ============================================================================
+
+Model::StreamIterator::StreamIterator(
+    Model* model, VideoSource* source, const InferConfig& config
+) : model_(model), source_(source), config_(config) {
+    start_time_ = std::chrono::steady_clock::now();
+}
+
+Model::StreamIterator Model::stream(
+    const std::string& source,
+    const InferConfig& config
+) {
+    stream_source_ = std::make_unique<VideoSource>(source);
+
+    trigger_callback(CallbackEvent::StreamStart);
+
+    return StreamIterator(this, stream_source_.get(), config);
+}
+
+Model::StreamResult Model::StreamIterator::next() {
+    StreamResult sr;
+
+    if (!source_ || !source_->is_opened()) {
+        sr.end_of_stream = true;
+        return sr;
+    }
+
+    cv::Mat frame = source_->read();
+    if (frame.empty()) {
+        sr.end_of_stream = true;
+        if (model_) {
+            model_->trigger_callback(CallbackEvent::StreamEnd);
+        }
+        return sr;
+    }
+
+    sr.frame = frame;
+    sr.results = model_->predict(frame, config_);
+    sr.frame_index = frame_index_++;
+
+    auto now = std::chrono::steady_clock::now();
+    double elapsed_s = std::chrono::duration<double>(now - start_time_).count();
+    sr.fps = (elapsed_s > 0) ? frame_index_ / elapsed_s : 0.0;
+
+    model_->trigger_callback(
+        CallbackEvent::StreamFrame,
+        sr.results.inference_time_ms,
+        1, sr.frame_index, &sr.results);
+
+    return sr;
+}
+
+bool Model::StreamIterator::has_next() const {
+    return source_ && source_->is_opened();
 }
 
 // ============================================================================

@@ -1,7 +1,13 @@
 """
 iVIT Device Discovery and Selection API
 
-Provides user-friendly device enumeration and selection.
+Provides user-friendly device enumeration and selection with
+intelligent vendor-aware priority ordering.
+
+Design Principles:
+1. Platform-Adaptive: Selects best device on current platform
+2. Vendor-Aware: NVIDIA dGPU > Intel dGPU > Intel iGPU > NPU > CPU
+3. Strategy-Based: Multiple selection strategies (latency, efficiency, balanced)
 
 Examples:
     # List all devices
@@ -13,7 +19,11 @@ Examples:
     >>> ivit.devices.cuda()      # First CUDA GPU
     >>> ivit.devices.cpu()       # CPU device
     >>> ivit.devices.npu()       # NPU device
-    >>> ivit.devices.best()      # Auto-select best
+    >>> ivit.devices.best()      # Auto-select best (latency-optimized)
+
+    # Strategy-based selection
+    >>> ivit.devices.best(strategy="latency")     # Default: lowest latency
+    >>> ivit.devices.best(strategy="efficiency")  # Power-efficient (NPU preferred)
 
     # Use in model loading
     >>> model = ivit.load("model.onnx", device=ivit.devices.cuda())
@@ -32,8 +42,6 @@ class DeviceType(Enum):
     GPU = "gpu"        # Intel GPU (OpenVINO)
     NPU = "npu"        # Intel NPU
     VPU = "vpu"        # Intel VPU (Myriad)
-    DSP = "dsp"        # Qualcomm DSP
-    HTP = "htp"        # Qualcomm HTP
     AUTO = "auto"
 
 
@@ -46,25 +54,30 @@ class Device:
         id: Device identifier (e.g., "cuda:0", "cpu", "npu")
         name: Human-readable device name
         type: Device type (cpu, cuda, npu, etc.)
-        backend: Inference backend (openvino, tensorrt, snpe)
+        backend: Inference backend (openvino, tensorrt)
+        vendor: Hardware vendor (nvidia, intel, amd)
         available: Whether device is currently available
         memory_total: Total memory in bytes (if applicable)
         compute_capability: Compute capability (for CUDA devices)
+        is_discrete: True for discrete GPU (dGPU)
     """
     id: str
     name: str
     type: str
     backend: str
+    vendor: str = "unknown"
     available: bool = True
     memory_total: int = 0
     compute_capability: str = ""
+    is_discrete: bool = False
 
     def __str__(self) -> str:
         return self.id
 
     def __repr__(self) -> str:
         status = "available" if self.available else "unavailable"
-        return f"Device({self.id}, {self.name}, {status})"
+        gpu_type = " (dGPU)" if self.is_discrete else ""
+        return f"Device({self.id}, {self.vendor}{gpu_type}, {status})"
 
 
 class DeviceManager:
@@ -124,13 +137,12 @@ class DeviceManager:
             # Fallback to Python-based discovery
             self._discover_openvino_devices()
             self._discover_cuda_devices()
-            self._discover_snpe_devices()
             self._add_cpu_fallback()
 
         self._cache_valid = True
 
     def _discover_openvino_devices(self) -> None:
-        """Discover OpenVINO devices."""
+        """Discover OpenVINO devices (Intel hardware)."""
         try:
             from openvino import Core
             core = Core()
@@ -141,13 +153,17 @@ class DeviceManager:
                 except:
                     full_name = device_name
 
-                # Determine type and ID
+                # Determine type, ID, and check if discrete
+                is_discrete = False
                 if "CPU" in device_name:
                     dev_id = "cpu"
                     dev_type = "cpu"
                 elif "GPU" in device_name:
                     dev_id = "gpu:0"
                     dev_type = "gpu"
+                    # Check for discrete GPU (Arc)
+                    name_lower = full_name.lower()
+                    is_discrete = any(x in name_lower for x in ["arc", "a770", "a750", "a380"])
                 elif "NPU" in device_name:
                     dev_id = "npu"
                     dev_type = "npu"
@@ -159,13 +175,15 @@ class DeviceManager:
                     name=full_name,
                     type=dev_type,
                     backend="openvino",
+                    vendor="intel",
                     available=True,
+                    is_discrete=is_discrete,
                 ))
         except ImportError:
             pass
 
     def _discover_cuda_devices(self) -> None:
-        """Discover CUDA devices."""
+        """Discover CUDA devices (NVIDIA hardware)."""
         try:
             import torch
             if torch.cuda.is_available():
@@ -176,15 +194,17 @@ class DeviceManager:
                         name=props.name,
                         type="cuda",
                         backend="tensorrt",
+                        vendor="nvidia",
                         available=True,
                         memory_total=props.total_memory,
                         compute_capability=f"{props.major}.{props.minor}",
+                        is_discrete=True,  # NVIDIA GPUs are discrete
                     ))
         except ImportError:
             # Try pycuda
             try:
                 import pycuda.driver as cuda
-                import pycuda.autoinit
+                cuda.init()
 
                 for i in range(cuda.Device.count()):
                     dev = cuda.Device(i)
@@ -193,28 +213,29 @@ class DeviceManager:
                         name=dev.name(),
                         type="cuda",
                         backend="tensorrt",
+                        vendor="nvidia",
                         available=True,
                         memory_total=dev.total_memory(),
+                        is_discrete=True,
                     ))
             except ImportError:
                 pass
-
-    def _discover_snpe_devices(self) -> None:
-        """Discover Qualcomm SNPE devices."""
-        # SNPE doesn't have a simple Python API for device discovery
-        # This would need platform-specific implementation
-        pass
 
     def _add_cpu_fallback(self) -> None:
         """Add CPU as fallback if not already present."""
         has_cpu = any(d.type == "cpu" for d in self._cache)
         if not has_cpu:
             import platform
+            cpu_info = platform.processor().lower()
+            vendor = "intel" if "intel" in cpu_info else \
+                     "amd" if "amd" in cpu_info else "unknown"
+
             self._cache.append(Device(
                 id="cpu",
                 name=platform.processor() or "CPU",
                 type="cpu",
                 backend="onnxruntime",
+                vendor=vendor,
                 available=True,
             ))
 
@@ -306,47 +327,106 @@ class DeviceManager:
                 return dev
         return None
 
-    def best(self, priority: str = "performance") -> Device:
+    def best(self, strategy: str = "latency", task: str = None) -> Device:
         """
-        Auto-select the best available device.
+        Auto-select the best available device using intelligent scoring.
+
+        The selection considers:
+        1. Vendor priority (NVIDIA dGPU > Intel dGPU > Intel iGPU > NPU > CPU)
+        2. Device availability and resources
+        3. Selection strategy
 
         Args:
-            priority: Selection criteria
-                - "performance": Fastest device (GPU > NPU > CPU)
-                - "efficiency": Most efficient (NPU > GPU > CPU)
-                - "memory": Most memory available
+            strategy: Selection strategy
+                - "latency": Lowest inference latency (default, recommended)
+                - "throughput": Highest batch processing capacity
+                - "efficiency": Best performance per watt (NPU preferred)
+                - "balanced": Balance between latency and efficiency
+            task: Task hint (e.g., "detection", "classification")
 
         Returns:
-            Best Device object based on criteria
+            Best Device object based on strategy
 
         Example:
             >>> model = ivit.load("model.onnx", device=ivit.devices.best())
             >>> model = ivit.load("model.onnx", device=ivit.devices.best("efficiency"))
         """
+        # Use core device selection
+        try:
+            from .core.device import get_best_device
+            result = get_best_device(task=task, strategy=strategy)
+
+            # Convert DeviceInfo to Device
+            return Device(
+                id=result.id,
+                name=result.name,
+                type=result.type,
+                backend=result.backend,
+                vendor=result.vendor,
+                available=result.is_available,
+                memory_total=result.memory_total,
+                is_discrete=result.is_discrete,
+            )
+        except Exception:
+            # Fallback to simple selection
+            pass
+
         available = [d for d in self() if d.available]
 
         if not available:
             return self.cpu()
 
-        if priority == "performance":
-            # Order: CUDA GPU > Intel GPU > NPU > VPU > CPU
-            type_order = ["cuda", "gpu", "npu", "vpu", "cpu"]
-        elif priority == "efficiency":
-            # Order: NPU > VPU > GPU > CUDA > CPU
-            type_order = ["npu", "vpu", "gpu", "cuda", "cpu"]
-        else:  # memory
-            # Sort by memory
-            available.sort(key=lambda d: d.memory_total, reverse=True)
-            return available[0]
+        if strategy in ("latency", "throughput"):
+            # Order: NVIDIA dGPU > Intel dGPU > Intel iGPU > NPU > CPU
+            def score(d):
+                base = 0
+                if d.vendor == "nvidia":
+                    base = 100
+                elif d.vendor == "intel" and d.is_discrete:
+                    base = 80
+                elif d.type == "gpu":
+                    base = 60
+                elif d.type == "npu":
+                    base = 40
+                elif d.type == "vpu":
+                    base = 30
+                else:
+                    base = 10
+                return base
 
-        # Sort by type order
-        def sort_key(d):
-            try:
-                return type_order.index(d.type)
-            except ValueError:
-                return len(type_order)
+            available.sort(key=score, reverse=True)
 
-        available.sort(key=sort_key)
+        elif strategy == "efficiency":
+            # Order: NPU > VPU > iGPU > CPU > dGPU
+            def score(d):
+                if d.type == "npu":
+                    return 100
+                elif d.type == "vpu":
+                    return 80
+                elif d.type == "gpu" and not d.is_discrete:
+                    return 60
+                elif d.type == "cpu":
+                    return 40
+                else:
+                    return 20
+                return base
+
+            available.sort(key=score, reverse=True)
+
+        else:  # balanced
+            # Order: NPU > NVIDIA > Intel GPU > CPU
+            def score(d):
+                if d.type == "npu":
+                    return 90
+                elif d.vendor == "nvidia":
+                    return 85
+                elif d.type == "gpu":
+                    return 70
+                else:
+                    return 30
+
+            available.sort(key=score, reverse=True)
+
         return available[0]
 
     def filter(
@@ -428,12 +508,17 @@ class D:
         >>> model = ivit.load("model.onnx", device=ivit.D.CPU)
         >>> model = ivit.load("model.onnx", device=ivit.D.CUDA)
     """
+    # Auto selection (recommended)
     AUTO = "auto"
-    CPU = "cpu"
+
+    # NVIDIA CUDA devices
     CUDA = "cuda:0"
     CUDA_0 = "cuda:0"
     CUDA_1 = "cuda:1"
-    GPU = "gpu:0"
+
+    # Intel OpenVINO devices
+    CPU = "cpu"
+    GPU = "gpu:0"      # Intel iGPU/dGPU
     GPU_0 = "gpu:0"
-    NPU = "npu"
-    VPU = "vpu"
+    NPU = "npu"        # Intel NPU
+    VPU = "vpu"        # Intel VPU (Myriad)

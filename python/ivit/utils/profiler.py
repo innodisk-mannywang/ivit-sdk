@@ -7,6 +7,60 @@ from dataclasses import dataclass
 import time
 import json
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _detect_model_precision(model) -> str:
+    """
+    Detect model precision from configuration.
+
+    Priority:
+    1. Explicit runtime configuration (OpenVINO, TensorRT, etc.)
+    2. LoadConfig precision setting
+    3. Model input dtype
+    4. Default to fp32
+
+    Args:
+        model: Model instance
+
+    Returns:
+        Precision string (e.g., "fp32", "fp16", "int8")
+    """
+    # Check OpenVINO config
+    if hasattr(model, '_openvino_config') and model._openvino_config:
+        config = model._openvino_config
+        if hasattr(config, 'inference_precision') and config.inference_precision:
+            return config.inference_precision.lower()
+
+    # Check TensorRT config
+    if hasattr(model, '_tensorrt_config') and model._tensorrt_config:
+        config = model._tensorrt_config
+        if hasattr(config, 'enable_int8') and config.enable_int8:
+            return "int8"
+        if hasattr(config, 'enable_fp16') and config.enable_fp16:
+            return "fp16"
+        return "fp32"
+
+    # Check LoadConfig
+    if hasattr(model, '_config') and model._config:
+        if hasattr(model._config, 'precision') and model._config.precision:
+            return model._config.precision.lower()
+
+    # Infer from input dtype
+    if hasattr(model, '_input_info') and model._input_info:
+        dtype = model._input_info[0].get("dtype", "float32")
+        dtype_map = {
+            "float32": "fp32",
+            "float16": "fp16",
+            "int8": "int8",
+            "uint8": "int8",
+            "int32": "int32",
+        }
+        return dtype_map.get(str(dtype).lower(), "fp32")
+
+    return "fp32"
 
 
 @dataclass
@@ -150,7 +204,7 @@ class Profiler:
             model_name=model.name,
             device=model.device,
             backend=model.backend,
-            precision="fp32",  # TODO: detect from model
+            precision=_detect_model_precision(model),
             input_shape=input_shape,
             iterations=iterations,
             latency_mean=mean,

@@ -3,9 +3,9 @@ requires = ["scikit-build-core>=0.5", "pybind11>=2.11"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "ivit"
+name = "ivit-sdk"
 version = "1.0.0"
-description = "iVIT-SDK: Innodisk Vision Intelligence Toolkit - Unified CV SDK for Intel/NVIDIA/Qualcomm"
+description = "iVIT-SDK: Innodisk Vision Intelligence Toolkit - Unified CV SDK with extensible hardware support"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
@@ -20,9 +20,9 @@ keywords = [
     "inference",
     "openvino",
     "tensorrt",
-    "snpe",
     "ai",
     "sdk",
+    "edge-ai",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -51,6 +51,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Backend-specific dependencies
+openvino = [
+    "openvino>=2024.0",
+]
+tensorrt = [
+    "tensorrt>=8.6",
+    "pycuda>=2022.1",
+]
+onnxruntime = [
+    "onnxruntime>=1.15",
+]
+onnxruntime-gpu = [
+    "onnxruntime-gpu>=1.15",
+]
+
+# Feature dependencies
 zoo = [
     "ultralytics>=8.0",
 ]
@@ -68,8 +84,13 @@ dev = [
     "sphinx>=6.0",
     "sphinx-rtd-theme>=1.2",
 ]
+# Combined installations
 all = [
-    "ivit[zoo,train,dev]",
+    "ivit-sdk[openvino,tensorrt,onnxruntime,onnxruntime-gpu,zoo,train,dev]",
+]
+# Alias for backward compatibility
+cuda = [
+    "ivit-sdk[tensorrt,onnxruntime-gpu]",
 ]
 
 [project.urls]

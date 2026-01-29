@@ -16,6 +16,19 @@ from .types import (
 )
 
 
+class NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy types."""
+
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
 class Results:
     """
     Unified results container for all task types.
@@ -432,7 +445,7 @@ class Results:
 
     def to_json(self) -> str:
         """Convert to JSON string."""
-        return json.dumps(self.to_dict(), indent=2)
+        return json.dumps(self.to_dict(), indent=2, cls=NumpyEncoder)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -565,6 +578,11 @@ class Results:
     def __getitem__(self, idx: int) -> Detection:
         """Get detection by index."""
         return self.detections[idx]
+
+    @property
+    def empty(self) -> bool:
+        """Check if results are empty (no detections, classifications, or poses)."""
+        return len(self) == 0
 
     # =========================================================================
     # Private methods

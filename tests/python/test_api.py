@@ -111,7 +111,7 @@ class TestTypes:
         config = InferConfig()
         assert config.conf_threshold == 0.5
         assert config.iou_threshold == 0.45
-        assert config.max_detections == 100
+        assert config.max_detections == 300  # YOLO default
 
 
 class TestResults:

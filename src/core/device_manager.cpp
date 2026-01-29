@@ -735,4 +735,11 @@ void clear_cache(const std::string& cache_dir) {
     }
 }
 
+std::shared_ptr<Model> load_model(
+    const std::string& path,
+    const LoadConfig& config
+) {
+    return ModelManager::instance().load(path, config);
+}
+
 } // namespace ivit

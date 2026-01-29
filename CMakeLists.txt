@@ -9,7 +9,7 @@ option(IVIT_BUILD_TESTS "Build tests" ON)
 option(IVIT_BUILD_EXAMPLES "Build examples" ON)
 option(IVIT_USE_OPENVINO "Enable OpenVINO backend" ON)
 option(IVIT_USE_TENSORRT "Enable TensorRT backend" ON)
-option(IVIT_USE_SNPE "Enable SNPE backend" OFF)
+option(IVIT_USE_QNN "Enable QNN backend (Qualcomm IQ Series)" OFF)
 option(IVIT_USE_ONNXRUNTIME "Enable ONNX Runtime backend" ON)
 
 # 依賴打包選項
@@ -185,6 +185,9 @@ set(IVIT_SOURCES
     src/core/model.cpp
     src/core/device_manager.cpp
     src/core/result.cpp
+    src/core/callback.cpp
+    src/core/runtime_config.cpp
+    src/core/video_source.cpp
 
     # Runtime
     src/runtime/runtime_factory.cpp
@@ -194,6 +197,10 @@ set(IVIT_SOURCES
     src/vision/classifier.cpp
     src/vision/detector.cpp
     src/vision/segmentor.cpp
+
+    # Utils
+    src/utils/profiler.cpp
+    src/utils/visualizer.cpp
 )
 
 # Add backend-specific sources
@@ -309,6 +316,18 @@ if(IVIT_BUILD_EXAMPLES)
 
     add_executable(video_demo examples/cpp/video_demo.cpp)
     target_link_libraries(video_demo PRIVATE ivit)
+
+    add_executable(si_quickstart examples/cpp/si_quickstart.cpp)
+    target_link_libraries(si_quickstart PRIVATE ivit)
+
+    add_executable(embedded_optimization examples/cpp/embedded_optimization.cpp)
+    target_link_libraries(embedded_optimization PRIVATE ivit)
+
+    add_executable(backend_service examples/cpp/backend_service.cpp)
+    target_link_libraries(backend_service PRIVATE ivit)
+
+    add_executable(data_analysis examples/cpp/data_analysis.cpp)
+    target_link_libraries(data_analysis PRIVATE ivit)
 endif()
 
 # ============================================================================
@@ -416,7 +435,7 @@ message(STATUS "")
 message(STATUS "Backends:")
 message(STATUS "  OpenVINO:       ${IVIT_USE_OPENVINO}")
 message(STATUS "  TensorRT:       ${IVIT_USE_TENSORRT}")
-message(STATUS "  SNPE:           ${IVIT_USE_SNPE}")
+message(STATUS "  QNN:            ${IVIT_USE_QNN}")
 message(STATUS "  ONNX Runtime:   ${IVIT_USE_ONNXRUNTIME}")
 message(STATUS "")
 message(STATUS "Components:")

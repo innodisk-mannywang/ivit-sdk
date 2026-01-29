@@ -351,24 +351,73 @@ class YOLOPostProcessor(BasePostProcessor):
         detections: List[Detection],
         iou_threshold: float
     ) -> List[Detection]:
-        """Non-maximum suppression."""
+        """
+        Optimized Non-Maximum Suppression using vectorized operations.
+
+        Uses numpy for batch IoU computation, significantly faster than
+        the naive O(n²) approach for large numbers of detections.
+        """
         if not detections:
             return []
 
-        # Sort by confidence
-        detections = sorted(detections, key=lambda x: x.confidence, reverse=True)
+        if len(detections) == 1:
+            return detections
 
-        keep = []
-        while detections:
-            best = detections.pop(0)
-            keep.append(best)
+        # Convert to numpy arrays for vectorized operations
+        n = len(detections)
+        boxes = np.zeros((n, 4), dtype=np.float32)
+        scores = np.zeros(n, dtype=np.float32)
+        class_ids = np.zeros(n, dtype=np.int32)
 
-            detections = [
-                d for d in detections
-                if d.class_id != best.class_id or best.bbox.iou(d.bbox) < iou_threshold
-            ]
+        for i, det in enumerate(detections):
+            boxes[i] = [det.bbox.x1, det.bbox.y1, det.bbox.x2, det.bbox.y2]
+            scores[i] = det.confidence
+            class_ids[i] = det.class_id
 
-        return keep
+        # Sort by confidence (descending)
+        order = np.argsort(-scores)
+
+        # Pre-compute areas
+        x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+        areas = (x2 - x1) * (y2 - y1)
+
+        keep_indices = []
+
+        while len(order) > 0:
+            # Take the detection with highest confidence
+            idx = order[0]
+            keep_indices.append(idx)
+
+            if len(order) == 1:
+                break
+
+            # Compute IoU with remaining boxes
+            remaining = order[1:]
+
+            # Intersection coordinates
+            xx1 = np.maximum(x1[idx], x1[remaining])
+            yy1 = np.maximum(y1[idx], y1[remaining])
+            xx2 = np.minimum(x2[idx], x2[remaining])
+            yy2 = np.minimum(y2[idx], y2[remaining])
+
+            # Intersection area
+            w = np.maximum(0.0, xx2 - xx1)
+            h = np.maximum(0.0, yy2 - yy1)
+            intersection = w * h
+
+            # IoU
+            union = areas[idx] + areas[remaining] - intersection
+            iou = np.where(union > 0, intersection / union, 0)
+
+            # Keep boxes with low IoU OR different class
+            same_class = class_ids[remaining] == class_ids[idx]
+            suppress = (iou >= iou_threshold) & same_class
+
+            # Update order to keep non-suppressed boxes
+            order = remaining[~suppress]
+
+        # Return kept detections in order
+        return [detections[i] for i in keep_indices]
 
 
 class ClassificationPostProcessor(BasePostProcessor):

@@ -81,8 +81,9 @@ std::shared_ptr<IRuntime> RuntimeFactory::get_best_runtime(
     } else if (ext == ".xml" || ext == ".bin") {
         auto rt = get_runtime(BackendType::OpenVINO);
         if (rt) return rt;
-    } else if (ext == ".dlc") {
-        auto rt = get_runtime(BackendType::SNPE);
+    } else if (ext == ".dlc" || ext == ".serialized") {
+        // QNN supports DLC (legacy SNPE) and serialized context formats
+        auto rt = get_runtime(BackendType::QNN);
         if (rt) return rt;
     } else if (ext == ".onnx") {
         // ONNX can be used by multiple backends

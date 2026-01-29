@@ -75,17 +75,81 @@ void TensorRTLogger::log(Severity severity, const char* msg) noexcept {
 // ============================================================================
 
 TensorRTEngine::~TensorRTEngine() {
-    // Free device buffers
-    for (void* buf : device_buffers) {
-        if (buf) {
-            cudaFree(buf);
+    std::cerr << "[DEBUG] TensorRTEngine::~TensorRTEngine() start" << std::endl;
+
+    // IMPORTANT: Check if CUDA context is still valid before cleanup.
+    int device;
+    cudaError_t err = cudaGetDevice(&device);
+    std::cerr << "[DEBUG] cudaGetDevice returned: " << cudaGetErrorString(err) << std::endl;
+
+    if (err != cudaSuccess) {
+        std::cerr << "[DEBUG] CUDA context invalid, skipping cleanup" << std::endl;
+        context.reset();
+        device_buffers.clear();
+        bindings.clear();
+        stream = nullptr;
+        engine.reset();
+        return;
+    }
+
+    // 1. First, synchronize any pending operations
+    std::cerr << "[DEBUG] Synchronizing stream..." << std::endl;
+    if (stream) {
+        err = cudaStreamSynchronize(stream);
+        std::cerr << "[DEBUG] cudaStreamSynchronize returned: " << cudaGetErrorString(err) << std::endl;
+        if (err != cudaSuccess) {
+            context.reset();
+            device_buffers.clear();
+            bindings.clear();
+            stream = nullptr;
+            engine.reset();
+            return;
         }
     }
 
-    // Destroy CUDA stream
+    // 2. Clear tensor addresses in context BEFORE freeing buffers
+    //    This is important for TensorRT 10 which uses setTensorAddress
+    std::cerr << "[DEBUG] Clearing tensor addresses..." << std::endl;
+    if (context && engine) {
+        int num_io = engine->getNbIOTensors();
+        for (int i = 0; i < num_io; i++) {
+            const char* name = engine->getIOTensorName(i);
+            context->setTensorAddress(name, nullptr);
+        }
+    }
+    std::cerr << "[DEBUG] Tensor addresses cleared" << std::endl;
+
+    // 3. Free device buffers BEFORE destroying context
+    //    (reverse order of allocation)
+    std::cerr << "[DEBUG] Freeing " << device_buffers.size() << " device buffers..." << std::endl;
+    for (size_t i = 0; i < device_buffers.size(); i++) {
+        if (device_buffers[i]) {
+            std::cerr << "[DEBUG] Freeing buffer " << i << std::endl;
+            cudaFree(device_buffers[i]);
+            device_buffers[i] = nullptr;
+        }
+    }
+    device_buffers.clear();
+    bindings.clear();
+    std::cerr << "[DEBUG] Buffers freed" << std::endl;
+
+    // 4. Destroy CUDA stream
+    std::cerr << "[DEBUG] Destroying stream..." << std::endl;
     if (stream) {
         cudaStreamDestroy(stream);
+        stream = nullptr;
     }
+    std::cerr << "[DEBUG] Stream destroyed" << std::endl;
+
+    // 5. Now destroy execution context
+    std::cerr << "[DEBUG] Resetting context..." << std::endl;
+    context.reset();
+    std::cerr << "[DEBUG] Context reset done" << std::endl;
+
+    // 6. Engine will be released when shared_ptr goes out of scope
+    std::cerr << "[DEBUG] Resetting engine..." << std::endl;
+    engine.reset();
+    std::cerr << "[DEBUG] TensorRTEngine::~TensorRTEngine() complete" << std::endl;
 }
 
 // ============================================================================

@@ -4,40 +4,25 @@ iVIT-SDK: Innodisk Vision Intelligence Toolkit
 Unified Computer Vision SDK with extensible hardware support.
 Currently supports Intel (OpenVINO) and NVIDIA (TensorRT) platforms.
 
-Key Features:
-- Automatic device selection based on current platform
-- Vendor-aware priority (NVIDIA dGPU > Intel iGPU > NPU > CPU)
-- Multiple selection strategies (latency, efficiency, balanced)
+Note: C++ bindings are required. Install with: pip install ivit-sdk
 
 Example:
     >>> import ivit
     >>>
     >>> # One-liner inference (auto device selection)
-    >>> model = ivit.load("yolov8n.onnx")  # Auto-selects best device
+    >>> model = ivit.load("yolov8n.onnx")
     >>> results = model("image.jpg")
     >>> results.show()
-    >>>
-    >>> # Device selection strategies
-    >>> ivit.devices.best()                    # Default: latency-optimized
-    >>> ivit.devices.best(strategy="efficiency")  # Power-efficient (NPU preferred)
-    >>>
-    >>> # Use specific device
-    >>> model = ivit.load("model.onnx", device="cuda:0")
     >>>
     >>> # Task-specific classes
     >>> detector = ivit.Detector("yolov8n.onnx", device="cuda:0")
     >>> results = detector.predict("image.jpg")
-    >>> print(f"Found {len(results)} objects")
 """
 
 __version__ = "1.0.0"
 __author__ = "Innodisk AI Team"
 
-# Try to import C++ bindings
-_HAS_CPP_BINDING = False
-
 # Pre-load libivit.so if it exists in the package directory
-# This is needed because the binding module depends on libivit.so
 import os as _os
 import ctypes as _ctypes
 
@@ -48,8 +33,9 @@ if _os.path.exists(_libivit_path):
     try:
         _ctypes.CDLL(_libivit_path, mode=_ctypes.RTLD_GLOBAL)
     except OSError:
-        pass  # Failed to load, will fall back to pure Python
+        pass
 
+# C++ bindings are required
 try:
     from ._ivit_core import (
         # Enums
@@ -78,6 +64,24 @@ try:
         Detector,
         Segmentor,
 
+        # Model
+        Model,
+        load_model,
+
+        # Callback system
+        CallbackEvent,
+        CallbackContext,
+
+        # Runtime config
+        OpenVINOConfig,
+        TensorRTConfig,
+        ONNXRuntimeConfig,
+        QNNConfig,
+
+        # Stream
+        StreamResult,
+        StreamIterator,
+
         # Functions
         version,
         list_devices,
@@ -92,76 +96,29 @@ try:
         DeviceNotFoundError,
         UnsupportedFormatError,
     )
-    _HAS_CPP_BINDING = True
-except ImportError:
-    # C++ bindings not available - this is expected in pure Python installations
-    # The SDK works fully with pure Python, C++ bindings are optional for better performance
-    pass
-
-    # Import pure Python fallback
-    from .core.types import (
-        LoadConfig,
-        InferConfig,
-        TensorInfo,
-        DeviceInfo,
-        SelectionStrategy,
-        BBox,
-        Detection,
-        ClassificationResult,
-        Keypoint,
-        Pose,
-    )
-
-    # Import Python exceptions as fallback
-    from .core.exceptions import (
-        IVITError,
-        ModelLoadError,
-        DeviceNotFoundError,
-        BackendNotAvailableError,
-        InferenceError,
-        InvalidInputError,
-        ModelNotLoadedError,
-        ConfigurationError,
-        ModelConversionError,
-        ResourceExhaustedError,
-        UnsupportedOperationError,
-    )
-
-    # Alias for compatibility with C++ binding
-    UnsupportedFormatError = UnsupportedOperationError
-
-    # Import device functions from Python core
-    from .core.device import (
-        list_devices,
-        get_best_device,
-        get_device,
-    )
-
-    def version():
-        return __version__
+except ImportError as e:
+    raise ImportError(
+        "iVIT-SDK requires C++ bindings. "
+        "Please build and install with: pip install -e . "
+        f"(Original error: {e})"
+    ) from e
 
 
 def is_cpp_available():
-    """Check if C++ bindings are available."""
-    return _HAS_CPP_BINDING
+    """Check if C++ bindings are available. Always True in this version."""
+    return True
 
 
 def get_runtime_info():
-    """
-    Get runtime information about iVIT SDK.
-
-    Returns:
-        dict: Runtime information including version and backend mode
-    """
+    """Get runtime information about iVIT SDK."""
     return {
         "version": __version__,
-        "cpp_bindings": _HAS_CPP_BINDING,
-        "mode": "C++ accelerated" if _HAS_CPP_BINDING else "Pure Python",
+        "cpp_bindings": True,
+        "mode": "C++ accelerated",
     }
 
 
-# Always import Python exceptions for extended exception types
-# These may extend or supplement the C++ exceptions
+# Import extended Python exceptions (supplement C++ exceptions)
 from .core.exceptions import (
     BackendNotAvailableError,
     InvalidInputError,
@@ -173,21 +130,8 @@ from .core.exceptions import (
     wrap_error,
 )
 
-# If C++ bindings are not available, we already imported all exceptions above
-# If C++ bindings are available, we still want to use the Python base exceptions
-# for cases not covered by C++
-if _HAS_CPP_BINDING:
-    # Keep C++ exceptions for core types, but use Python for extended types
-    pass
-else:
-    # Already imported in fallback section above
-    pass
-
 # Import devices module for device discovery
 from .devices import devices, Device, D
-
-# Import load function from core
-from .core.model import load_model as _load_model
 
 # Import Model Zoo
 from . import zoo
@@ -208,58 +152,42 @@ def load(
     """
     Load a model for inference.
 
-    This is the main entry point for iVIT SDK, providing a simple
-    one-liner API similar to Ultralytics.
-
     Args:
         source: Model path (.onnx, .xml, .engine) or Model Zoo name
-        device: Target device
-            - "auto": Auto-select best available device
-            - "cpu": CPU inference
-            - "cuda:0": NVIDIA GPU (index 0)
-            - "npu": Intel NPU
-            - Device object from ivit.devices
-        task: Task type hint (auto-detected if None)
-            - "detect": Object detection
-            - "classify": Image classification
-            - "segment": Semantic segmentation
-            - "pose": Pose estimation
+        device: Target device ("auto", "cpu", "cuda:0", "npu")
+        task: Task type hint ("detect", "classify", "segment", "pose")
 
     Returns:
         Model: Loaded model ready for inference
 
     Examples:
-        >>> import ivit
-        >>>
-        >>> # Simple load and inference
         >>> model = ivit.load("yolov8n.onnx")
-        >>> results = model("image.jpg")
-        >>> results.show()
-        >>>
-        >>> # With device selection
-        >>> model = ivit.load("model.onnx", device=ivit.devices.cuda())
-        >>> model = ivit.load("model.onnx", device=ivit.devices.best())
-        >>>
-        >>> # With explicit task
-        >>> model = ivit.load("resnet50.onnx", task="classify")
+        >>> results = model.predict("image.jpg")
     """
-    # Handle Device object
     if hasattr(device, 'id'):
         device = device.id
     elif device == "auto":
-        # Use best available device
         best = devices.best()
         device = best.id
 
-    return _load_model(source, device=device, task=task, **kwargs)
+    config = LoadConfig()
+    config.device = device
+    if task:
+        config.task = task
+    for key, value in kwargs.items():
+        if hasattr(config, key):
+            setattr(config, key, value)
+
+    return load_model(source, config)
 
 
 __all__ = [
     # Version
     "__version__",
 
-    # Main API (Ultralytics-style)
+    # Main API
     "load",
+    "load_model",
     "devices",
     "Device",
     "D",
@@ -267,7 +195,7 @@ __all__ = [
     # Training module
     "train",
 
-    # Enums (if available)
+    # Enums
     "DataType",
     "Precision",
     "Layout",
@@ -275,6 +203,10 @@ __all__ = [
     # Configuration
     "LoadConfig",
     "InferConfig",
+    "OpenVINOConfig",
+    "TensorRTConfig",
+    "ONNXRuntimeConfig",
+    "QNNConfig",
 
     # Data structures
     "TensorInfo",
@@ -288,10 +220,21 @@ __all__ = [
     # Results
     "Results",
 
+    # Model
+    "Model",
+
     # Vision models
     "Classifier",
     "Detector",
     "Segmentor",
+
+    # Callback
+    "CallbackEvent",
+    "CallbackContext",
+
+    # Stream
+    "StreamResult",
+    "StreamIterator",
 
     # Functions
     "version",

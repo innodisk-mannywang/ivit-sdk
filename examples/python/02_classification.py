@@ -13,7 +13,7 @@ def classify_image(image_path: str, top_k: int = 5):
     """Classify an image and print results."""
 
     # Create classifier
-    classifier = Classifier("efficientnet_b0", device="auto")
+    classifier = Classifier("efficientnet-b0", device="auto")
     print(f"Model: {classifier.model.name}")
     print(f"Device: {classifier.model.device}")
     print(f"Classes: {classifier.num_classes}")

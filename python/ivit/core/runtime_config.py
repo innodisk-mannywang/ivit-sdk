@@ -226,29 +226,37 @@ class ONNXRuntimeConfig:
 
 
 @dataclass
-class SNPEConfig:
+class QNNConfig:
     """
-    Qualcomm SNPE runtime configuration.
+    Qualcomm QNN (AI Engine Direct) runtime configuration.
 
-    Provides access to Hexagon DSP/NPU optimizations.
+    Provides access to Hexagon Tensor Processor (HTP) optimizations
+    for Qualcomm IQ Series (QCS9075, QCS8550, etc.).
 
     Examples:
-        >>> model.configure_snpe(
-        ...     runtime="dsp",
+        >>> model.configure_qnn(
+        ...     backend="htp",
         ...     performance_profile="HIGH_PERFORMANCE",
         ... )
     """
-    # Runtime selection
-    runtime: str = "dsp"
-    """Runtime: "cpu", "gpu", "dsp", "aip" """
+    # Backend selection
+    backend: str = "htp"
+    """Backend: "cpu", "gpu", "htp" (Hexagon Tensor Processor) """
 
     # Performance profile
     performance_profile: str = "DEFAULT"
-    """Performance profile: "DEFAULT", "BALANCED", "HIGH_PERFORMANCE", "POWER_SAVER", "SUSTAINED_HIGH_PERFORMANCE" """
+    """Performance profile: "DEFAULT", "BALANCED", "HIGH_PERFORMANCE", "POWER_SAVER", "SUSTAINED_HIGH_PERFORMANCE", "BURST" """
 
-    # Buffer type
-    use_user_supplied_buffers: bool = False
-    """Use user-supplied buffers for zero-copy"""
+    # HTP-specific options
+    htp_precision: str = "fp16"
+    """HTP precision: "fp16", "int8" """
+
+    htp_use_fold_relu: bool = True
+    """Fold ReLU activations for better performance"""
+
+    # Buffer optimization
+    use_native_memory: bool = True
+    """Use native memory for zero-copy between backends"""
 
     # Profiling
     enable_profiling: bool = False
@@ -257,12 +265,23 @@ class SNPEConfig:
     profiling_level: str = "BASIC"
     """Profiling level: "OFF", "BASIC", "MODERATE", "DETAILED" """
 
-    def to_snpe_config(self) -> Dict[str, Any]:
-        """Convert to SNPE config dict."""
+    # Context caching
+    cache_context: bool = True
+    """Cache compiled context for faster subsequent loads"""
+
+    def to_qnn_config(self) -> Dict[str, Any]:
+        """Convert to QNN config dict."""
         return {
-            "runtime": self.runtime,
+            "backend": self.backend,
             "performance_profile": self.performance_profile,
-            "use_user_supplied_buffers": self.use_user_supplied_buffers,
+            "htp_precision": self.htp_precision,
+            "htp_use_fold_relu": self.htp_use_fold_relu,
+            "use_native_memory": self.use_native_memory,
             "enable_profiling": self.enable_profiling,
             "profiling_level": self.profiling_level,
+            "cache_context": self.cache_context,
         }
+
+
+# Backward compatibility alias
+SNPEConfig = QNNConfig

@@ -1,8 +1,11 @@
 """
 Core module for iVIT-SDK.
+
+Re-exports C++ binding types and Python-only utilities.
 """
 
-from .types import (
+# Core types from C++ bindings
+from .._ivit_core import (
     LoadConfig,
     InferConfig,
     DeviceInfo,
@@ -12,46 +15,25 @@ from .types import (
     Keypoint,
     Pose,
     TensorInfo,
-)
-
-from .result import Results
-from .model import Model, load_model
-from .device import list_devices, get_best_device, get_device
-
-# Callback system
-from .callbacks import (
-    CallbackManager,
-    CallbackContext,
+    Results,
+    Model,
+    load_model,
     CallbackEvent,
-    callback,
-    LatencyLogger,
-    FPSCounter,
-    DetectionFilter,
-)
-
-# Runtime configuration
-from .runtime_config import (
+    CallbackContext,
     OpenVINOConfig,
     TensorRTConfig,
     ONNXRuntimeConfig,
-    SNPEConfig,
+    QNNConfig,
 )
 
-# Processors
-from .processors import (
-    BasePreProcessor,
-    BasePostProcessor,
-    LetterboxPreProcessor,
-    CenterCropPreProcessor,
-    YOLOPostProcessor,
-    ClassificationPostProcessor,
-    get_preprocessor,
-    get_postprocessor,
-    register_preprocessor,
-    register_postprocessor,
+# Device functions
+from .device import (
+    list_devices,
+    get_best_device,
+    get_device,
 )
 
-# Exceptions
+# Python-only exceptions (supplement C++ exceptions)
 from .exceptions import (
     IVITError,
     ModelLoadError,
@@ -68,6 +50,7 @@ from .exceptions import (
 )
 
 __all__ = [
+    # Types
     "LoadConfig",
     "InferConfig",
     "DeviceInfo",
@@ -78,24 +61,21 @@ __all__ = [
     "Pose",
     "TensorInfo",
     "Results",
+    # Model
     "Model",
     "load_model",
+    # Device
     "list_devices",
     "get_best_device",
     "get_device",
     # Callbacks
-    "CallbackManager",
-    "CallbackContext",
     "CallbackEvent",
-    "callback",
-    "LatencyLogger",
-    "FPSCounter",
-    "DetectionFilter",
+    "CallbackContext",
     # Runtime configs
     "OpenVINOConfig",
     "TensorRTConfig",
     "ONNXRuntimeConfig",
-    "SNPEConfig",
+    "QNNConfig",
     # Exceptions
     "IVITError",
     "ModelLoadError",

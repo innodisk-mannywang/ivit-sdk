@@ -1,6 +1,17 @@
 """
 OpenVINO runtime for iVIT-SDK.
+
+.. deprecated:: 1.0.0
+    Pure Python OpenVINO runtime is deprecated. All inference now uses C++ bindings.
 """
+
+import warnings
+
+warnings.warn(
+    "ivit.runtime.openvino_runtime is deprecated. Use C++ bindings instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from typing import Dict, List, Optional, Any
 import numpy as np

@@ -12,6 +12,9 @@
 
 // Include iVIT headers
 #include "ivit/ivit.hpp"
+#include "ivit/core/callback.hpp"
+#include "ivit/core/runtime_config.hpp"
+#include "ivit/core/video_source.hpp"
 #include "ivit/vision/classifier.hpp"
 #include "ivit/vision/detector.hpp"
 #include "ivit/vision/segmentor.hpp"
@@ -530,6 +533,232 @@ PYBIND11_MODULE(_ivit_core, m) {
             cv::Mat mat = numpy_to_mat(image);
             return seg.predict(mat);
         }, py::arg("image"));
+
+    // ========================================================================
+    // Callback System
+    // ========================================================================
+
+    py::enum_<ivit::CallbackEvent>(m, "CallbackEvent", "Callback event types")
+        .value("PreProcess", ivit::CallbackEvent::PreProcess)
+        .value("PostProcess", ivit::CallbackEvent::PostProcess)
+        .value("InferStart", ivit::CallbackEvent::InferStart)
+        .value("InferEnd", ivit::CallbackEvent::InferEnd)
+        .value("BatchStart", ivit::CallbackEvent::BatchStart)
+        .value("BatchEnd", ivit::CallbackEvent::BatchEnd)
+        .value("StreamStart", ivit::CallbackEvent::StreamStart)
+        .value("StreamFrame", ivit::CallbackEvent::StreamFrame)
+        .value("StreamEnd", ivit::CallbackEvent::StreamEnd)
+        .export_values();
+
+    py::class_<ivit::CallbackContext>(m, "CallbackContext", "Context passed to callbacks")
+        .def(py::init<>())
+        .def_readonly("event", &ivit::CallbackContext::event)
+        .def_readonly("model_name", &ivit::CallbackContext::model_name)
+        .def_readonly("device", &ivit::CallbackContext::device)
+        .def_readonly("latency_ms", &ivit::CallbackContext::latency_ms)
+        .def_readonly("batch_size", &ivit::CallbackContext::batch_size)
+        .def_readonly("frame_index", &ivit::CallbackContext::frame_index)
+        .def_readonly("metadata", &ivit::CallbackContext::metadata)
+        .def("__repr__", [](const ivit::CallbackContext& ctx) {
+            return "<CallbackContext event='" + ivit::to_string(ctx.event) +
+                   "' latency=" + std::to_string(ctx.latency_ms) + "ms>";
+        });
+
+    // ========================================================================
+    // Runtime Configuration
+    // ========================================================================
+
+    py::class_<ivit::OpenVINOConfig>(m, "OpenVINOConfig", "OpenVINO runtime configuration")
+        .def(py::init<>())
+        .def_readwrite("performance_mode", &ivit::OpenVINOConfig::performance_mode)
+        .def_readwrite("num_streams", &ivit::OpenVINOConfig::num_streams)
+        .def_readwrite("inference_precision", &ivit::OpenVINOConfig::inference_precision)
+        .def_readwrite("enable_cpu_pinning", &ivit::OpenVINOConfig::enable_cpu_pinning)
+        .def_readwrite("num_threads", &ivit::OpenVINOConfig::num_threads)
+        .def_readwrite("npu_compilation_mode", &ivit::OpenVINOConfig::npu_compilation_mode)
+        .def_readwrite("cache_dir", &ivit::OpenVINOConfig::cache_dir)
+        .def_readwrite("device_properties", &ivit::OpenVINOConfig::device_properties);
+
+    py::class_<ivit::TensorRTConfig>(m, "TensorRTConfig", "TensorRT runtime configuration")
+        .def(py::init<>())
+        .def_readwrite("enable_fp16", &ivit::TensorRTConfig::enable_fp16)
+        .def_readwrite("enable_int8", &ivit::TensorRTConfig::enable_int8)
+        .def_readwrite("workspace_size", &ivit::TensorRTConfig::workspace_size)
+        .def_readwrite("enable_dla", &ivit::TensorRTConfig::enable_dla)
+        .def_readwrite("dla_core", &ivit::TensorRTConfig::dla_core)
+        .def_readwrite("max_batch_size", &ivit::TensorRTConfig::max_batch_size)
+        .def_readwrite("enable_sparsity", &ivit::TensorRTConfig::enable_sparsity)
+        .def_readwrite("strict_types", &ivit::TensorRTConfig::strict_types)
+        .def_readwrite("calibration_cache", &ivit::TensorRTConfig::calibration_cache)
+        .def_readwrite("timing_cache", &ivit::TensorRTConfig::timing_cache);
+
+    py::class_<ivit::ONNXRuntimeConfig>(m, "ONNXRuntimeConfig", "ONNX Runtime configuration")
+        .def(py::init<>())
+        .def_readwrite("execution_provider", &ivit::ONNXRuntimeConfig::execution_provider)
+        .def_readwrite("intra_op_num_threads", &ivit::ONNXRuntimeConfig::intra_op_num_threads)
+        .def_readwrite("inter_op_num_threads", &ivit::ONNXRuntimeConfig::inter_op_num_threads)
+        .def_readwrite("graph_optimization_level", &ivit::ONNXRuntimeConfig::graph_optimization_level)
+        .def_readwrite("enable_mem_pattern", &ivit::ONNXRuntimeConfig::enable_mem_pattern)
+        .def_readwrite("enable_cpu_mem_arena", &ivit::ONNXRuntimeConfig::enable_cpu_mem_arena);
+
+    py::class_<ivit::QNNConfig>(m, "QNNConfig", "Qualcomm QNN configuration")
+        .def(py::init<>())
+        .def_readwrite("backend", &ivit::QNNConfig::backend)
+        .def_readwrite("performance_mode", &ivit::QNNConfig::performance_mode)
+        .def_readwrite("precision", &ivit::QNNConfig::precision)
+        .def_readwrite("enable_htp_fp16", &ivit::QNNConfig::enable_htp_fp16);
+
+    // ========================================================================
+    // Model (C++ core model with full API)
+    // ========================================================================
+
+    py::class_<ivit::Model, std::shared_ptr<ivit::Model>>(m, "Model", "Inference model")
+        // Properties
+        .def_property_readonly("name", &ivit::Model::name)
+        .def_property_readonly("task", &ivit::Model::task)
+        .def_property_readonly("device", &ivit::Model::device)
+        .def_property_readonly("backend", &ivit::Model::backend)
+        .def_property_readonly("input_info", &ivit::Model::input_info)
+        .def_property_readonly("output_info", &ivit::Model::output_info)
+        .def_property_readonly("memory_usage", &ivit::Model::memory_usage)
+        .def_property_readonly("labels", &ivit::Model::labels)
+
+        // Predict with numpy
+        .def("predict", [](ivit::Model& model, py::array image, const ivit::InferConfig& config) {
+            cv::Mat mat = numpy_to_mat(image);
+            return model.predict(mat, config);
+        }, py::arg("image"), py::arg("config") = ivit::InferConfig{},
+           "Run inference on image")
+
+        // Predict with file path
+        .def("predict", py::overload_cast<const std::string&, const ivit::InferConfig&>(
+            &ivit::Model::predict),
+             py::arg("image_path"), py::arg("config") = ivit::InferConfig{})
+
+        // Batch predict
+        .def("predict_batch", [](ivit::Model& model, std::vector<py::array>& images,
+                                  const ivit::InferConfig& config) {
+            std::vector<cv::Mat> mats;
+            mats.reserve(images.size());
+            for (auto& img : images) {
+                mats.push_back(numpy_to_mat(img));
+            }
+            return model.predict_batch(mats, config);
+        }, py::arg("images"), py::arg("config") = ivit::InferConfig{})
+
+        // Async predict
+        .def("predict_async", [](ivit::Model& model, py::array image,
+                                  const ivit::InferConfig& config) {
+            cv::Mat mat = numpy_to_mat(image);
+            auto future = model.predict_async(mat, config);
+            py::gil_scoped_release release;
+            return future.get();
+        }, py::arg("image"), py::arg("config") = ivit::InferConfig{},
+           "Run async inference (blocks until complete)")
+
+        // Concurrent predict
+        .def("predict_concurrent", [](ivit::Model& model, std::vector<py::array>& images,
+                                       int max_concurrent, const ivit::InferConfig& config) {
+            std::vector<cv::Mat> mats;
+            mats.reserve(images.size());
+            for (auto& img : images) {
+                mats.push_back(numpy_to_mat(img));
+            }
+            py::gil_scoped_release release;
+            return model.predict_concurrent(mats, max_concurrent, config);
+        }, py::arg("images"), py::arg("max_concurrent") = 4,
+           py::arg("config") = ivit::InferConfig{})
+
+        // Submit inference (fire-and-forget with Python callback)
+        .def("submit_inference", [](ivit::Model& model, py::array image,
+                                     py::function callback, const ivit::InferConfig& config) {
+            cv::Mat mat = numpy_to_mat(image);
+            model.submit_inference(mat, [callback](ivit::Results results) {
+                py::gil_scoped_acquire acquire;
+                callback(results);
+            }, config);
+        }, py::arg("image"), py::arg("callback"),
+           py::arg("config") = ivit::InferConfig{})
+
+        .def("shutdown_async", &ivit::Model::shutdown_async)
+
+        // Warmup
+        .def("warmup", &ivit::Model::warmup, py::arg("iterations") = 3)
+
+        // Callbacks
+        .def("on", [](ivit::Model& model, const std::string& event,
+                       py::function callback, int priority) {
+            return model.on(event, [callback](const ivit::CallbackContext& ctx) {
+                py::gil_scoped_acquire acquire;
+                callback(ctx);
+            }, priority);
+        }, py::arg("event"), py::arg("callback"), py::arg("priority") = 0,
+           "Register event callback")
+
+        .def("remove_callback", &ivit::Model::remove_callback,
+             py::arg("event"), py::arg("callback_id"))
+        .def("remove_all_callbacks", &ivit::Model::remove_all_callbacks,
+             py::arg("event"))
+
+        // Hardware config
+        .def("configure_openvino", &ivit::Model::configure_openvino, py::arg("config"))
+        .def("configure_tensorrt", &ivit::Model::configure_tensorrt, py::arg("config"))
+        .def("configure_onnxruntime", &ivit::Model::configure_onnxruntime, py::arg("config"))
+        .def("configure_qnn", &ivit::Model::configure_qnn, py::arg("config"))
+
+        // TTA
+        .def("predict_tta", [](ivit::Model& model, py::array image,
+                                const std::vector<std::string>& augmentations,
+                                const ivit::InferConfig& config) {
+            cv::Mat mat = numpy_to_mat(image);
+            return model.predict_tta(mat, augmentations, config);
+        }, py::arg("image"),
+           py::arg("augmentations") = std::vector<std::string>{"original", "hflip"},
+           py::arg("config") = ivit::InferConfig{},
+           "Run inference with test-time augmentation")
+
+        // Stream - returns StreamIterator
+        .def("stream", [](ivit::Model& model, const std::string& source,
+                           const ivit::InferConfig& config) {
+            return model.stream(source, config);
+        }, py::arg("source"), py::arg("config") = ivit::InferConfig{})
+
+        .def("__repr__", [](const ivit::Model& m) {
+            return "<Model '" + m.name() + "' device='" + m.device() + "'>";
+        });
+
+    // StreamResult
+    py::class_<ivit::Model::StreamResult>(m, "StreamResult", "Streaming inference result")
+        .def(py::init<>())
+        .def_readonly("results", &ivit::Model::StreamResult::results)
+        .def_property_readonly("frame", [](const ivit::Model::StreamResult& sr) {
+            return mat_to_numpy(sr.frame);
+        })
+        .def_readonly("frame_index", &ivit::Model::StreamResult::frame_index)
+        .def_readonly("fps", &ivit::Model::StreamResult::fps)
+        .def_readonly("end_of_stream", &ivit::Model::StreamResult::end_of_stream);
+
+    // StreamIterator
+    py::class_<ivit::Model::StreamIterator>(m, "StreamIterator", "Video stream iterator")
+        .def("__iter__", [](ivit::Model::StreamIterator& it) -> ivit::Model::StreamIterator& {
+            return it;
+        })
+        .def("__next__", [](ivit::Model::StreamIterator& it) {
+            if (!it.has_next()) {
+                throw py::stop_iteration();
+            }
+            auto result = it.next();
+            if (result.end_of_stream) {
+                throw py::stop_iteration();
+            }
+            return result;
+        });
+
+    // ModelManager - load_model function
+    m.def("load_model", [](const std::string& path, const ivit::LoadConfig& config) {
+        return ivit::ModelManager::instance().load(path, config);
+    }, py::arg("path"), py::arg("config") = ivit::LoadConfig{},
+       "Load a model for inference");
 
     // ========================================================================
     // Module-level Functions

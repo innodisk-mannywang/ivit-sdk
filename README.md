@@ -3,7 +3,7 @@
 **Innodisk Vision Intelligence Toolkit** - 統一的電腦視覺推論與訓練 SDK
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://python.org)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org)
 
 ## 概述
@@ -13,7 +13,7 @@ iVIT-SDK 是宜鼎科技開發的統一電腦視覺 SDK，提供跨硬體平台�
 ### 特色
 
 - **統一 API** - 一套程式碼，支援多種硬體平台
-- **多後端支援** - Intel OpenVINO、NVIDIA TensorRT、Qualcomm SNPE
+- **多後端支援** - Intel OpenVINO、NVIDIA TensorRT、Qualcomm QNN (IQ Series)
 - **完整視覺任務** - 分類、物件偵測、語意分割、姿態估計
 - **遷移式學習** - 支援模型微調和訓練
 - **雙語言支援** - Python 和 C++ API
@@ -24,19 +24,44 @@ iVIT-SDK 是宜鼎科技開發的統一電腦視覺 SDK，提供跨硬體平台�
 | 廠商 | 硬體類型 | 後端 | 架構 |
 |------|---------|------|------|
 | Intel | CPU、iGPU、NPU、VPU | OpenVINO | x86_64、ARM64 |
-| NVIDIA | GPU | TensorRT | x86_64、ARM64 |
-| Qualcomm | NPU、DSP、GPU | SNPE | ARM64 |
+| NVIDIA | GPU (dGPU、Jetson) | TensorRT | x86_64、ARM64 |
+| Qualcomm | IQ9/IQ8/IQ6 (Hexagon NPU) | QNN | ARM64 |
+
+### Qualcomm IQ Series 支援
+
+| 系列 | 晶片 | AI 效能 | 裝置代號 |
+|------|------|---------|---------|
+| IQ9 | QCS9075 | 100 TOPS | `iq9` |
+| IQ8 | QCS8550 | 48 TOPS | `iq8` |
+| IQ6 | QCS6490 | 15 TOPS | `iq6` |
+
+> **可擴展架構**：SDK 設計支援動態新增硬體平台。詳見 [新增硬體平台指南](docs/hardware-extension.md)。
 
 ## 安裝
 
 ### 使用 pip 安裝
 
 ```bash
+# 基本安裝
 pip install ivit-sdk
 
-# (選用) 安裝 Model Zoo 支援（自動下載和轉換模型）
-pip install ultralytics
+# 安裝特定後端支援
+pip install ivit-sdk[openvino]     # Intel OpenVINO
+pip install ivit-sdk[tensorrt]     # NVIDIA TensorRT (需先安裝 CUDA)
+pip install ivit-sdk[onnxruntime]  # ONNX Runtime CPU
+pip install ivit-sdk[onnxruntime-gpu]  # ONNX Runtime GPU
+
+# 安裝 Model Zoo 支援（自動下載和轉換模型）
+pip install ivit-sdk[zoo]
+
+# 安裝全部功能 (Intel + ONNX Runtime + Zoo + 訓練 + 開發工具)
+pip install ivit-sdk[all]
+
+# NVIDIA CUDA 完整支援
+pip install ivit-sdk[cuda]
 ```
+
+> **注意**: QNN 後端需要安裝 [Qualcomm AI Engine Direct SDK](https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk)。
 
 ### 從原始碼建置
 
@@ -45,22 +70,26 @@ pip install ultralytics
 git clone https://github.com/innodisk-ai/ivit-sdk.git
 cd ivit-sdk
 
+# 下載 C++ 後端依賴庫（OpenVINO、ONNX Runtime）
+./scripts/download_deps.sh
+
 # 建立建置目錄
 mkdir build && cd build
 
-# 設定 CMake（根據需要啟用後端）
+# 設定 CMake（使用下載的依賴庫）
 cmake .. \
-    -DIVIT_USE_OPENVINO=ON \
-    -DIVIT_USE_TENSORRT=ON \
-    -DIVIT_USE_ONNXRUNTIME=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DIVIT_BUNDLE_DEPS=ON \
     -DIVIT_BUILD_PYTHON=ON
 
 # 建置
 make -j$(nproc)
 
-# 安裝
+# 安裝（可選）
 sudo make install
 ```
+
+> **注意**：TensorRT 需從 [NVIDIA Developer](https://developer.nvidia.com/tensorrt) 手動下載。詳見 [Getting Started](docs/getting-started.md)。
 
 ### Python 開發模式安裝
 
@@ -220,35 +249,51 @@ ivit-sdk/
 ./video_demo yolov8n.onnx 0 cuda:0  # 使用攝影機 0
 ```
 
-### 依角色的開發範例
+### 開發範例
 
-我們為不同角色的開發者提供專屬範例，涵蓋從快速整合到效能優化的完整場景。
+#### 基本範例 (`examples/python/`)
 
-#### Python 範例 (`examples/python/`)
+| 範例 | 說明 |
+|------|------|
+| `01_quickstart.py` | 快速入門（直接執行即可） |
+| `02_detection.py` | 物件偵測（支援參數設定、效能測試） |
+| `02_classification.py` | 影像分類 |
+
+```bash
+# 快速入門
+python examples/python/01_quickstart.py
+
+# 物件偵測（指定裝置和參數）
+python examples/python/02_detection.py \
+    -m models/onnx/yolov8n.onnx \
+    -i examples/data/images/bus.jpg \
+    -d cuda:0
+
+# 物件偵測（效能測試模式）
+python examples/python/02_detection.py \
+    -m models/onnx/yolov8n.onnx \
+    -i examples/data/images/bus.jpg \
+    -d cuda:0 -b -n 100
+```
+
+#### 進階範例 (`examples/python/advanced/`)
+
+針對不同角色的開發者提供專屬範例：
 
 | 範例 | 對象 | 說明 |
 |------|------|------|
 | `si_quickstart.py` | 系統整合商 | 裝置探索、錯誤處理、JSON 輸出 |
 | `ai_developer_training.py` | AI 應用開發者 | 遷移式學習、模型訓練、匯出 |
-| `embedded_optimization.py` | 嵌入式工程師 | Runtime 配置、效能測試、自訂前處理器 |
+| `embedded_optimization.py` | 嵌入式工程師 | Runtime 配置、效能測試 |
 | `backend_service.py` | 後端工程師 | Callback 監控、REST API 服務 |
-| `data_analysis.py` | 資料科學家 | 結果分析、批次處理、Model Zoo |
+| `data_analysis.py` | 資料科學家 | 結果分析、批次處理 |
 
 ```bash
 # 系統整合商：快速整合
-python examples/python/si_quickstart.py --image test.jpg
-
-# AI 開發者：訓練自訂模型
-python examples/python/ai_developer_training.py --dataset ./my_dataset --epochs 20
+python examples/python/advanced/si_quickstart.py --image test.jpg
 
 # 嵌入式工程師：效能優化
-python examples/python/embedded_optimization.py --benchmark --iterations 100
-
-# 後端工程師：啟動 REST API 服務
-python examples/python/backend_service.py --serve --port 8080
-
-# 資料科學家：結果分析
-python examples/python/data_analysis.py --task detect --image test.jpg
+python examples/python/advanced/embedded_optimization.py --benchmark --iterations 100
 ```
 
 #### C++ 範例 (`examples/cpp/`)
@@ -283,10 +328,10 @@ make -j$(nproc)
 
 ## 文件
 
-- [快速入門指南](docs/GETTING_STARTED.md)
-- [產品需求文件 (PRD)](docs/PRD/PRD-001-ivit-sdk.md)
-- [系統架構設計](docs/architecture/ADR-001-system-architecture.md)
-- [API 規格](docs/api/API-SPEC-001-ivit-sdk.md)
+- [快速入門指南](docs/getting-started.md)
+- [產品需求文件 (PRD)](docs/development/prd.md)
+- [系統架構設計](docs/architecture/adr-001-system.md)
+- [API 規格](docs/api/api-spec.md)
 
 ## 開發
 

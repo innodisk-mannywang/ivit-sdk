@@ -19,12 +19,18 @@ class DataType(Enum):
 
 
 class BackendType(Enum):
-    """Backend type enumeration."""
-    OPENVINO = "openvino"
-    TENSORRT = "tensorrt"
-    SNPE = "snpe"
-    ONNXRUNTIME = "onnxruntime"
-    AUTO = "auto"
+    """
+    Backend type enumeration.
+
+    This enum is extensible - new backends can be added as the SDK
+    supports additional hardware platforms.
+    """
+    OPENVINO = "openvino"      # Intel: CPU, iGPU, NPU, VPU
+    TENSORRT = "tensorrt"      # NVIDIA: CUDA GPUs, Jetson
+    ONNXRUNTIME = "onnxruntime"  # Cross-platform fallback
+    AUTO = "auto"              # Automatic selection
+    # [Future] Add new backends here:
+    # XXX = "xxx"
 
 
 class TaskType(Enum):
@@ -82,16 +88,37 @@ class TensorInfo:
         return result
 
 
+class SelectionStrategy(Enum):
+    """
+    Device selection strategy.
+
+    Determines how the SDK selects the best device when device="auto".
+    """
+    LATENCY = "latency"          # Lowest inference latency (default)
+    THROUGHPUT = "throughput"    # Highest batch processing throughput
+    EFFICIENCY = "efficiency"    # Best performance per watt
+    BALANCED = "balanced"        # Balance between latency and efficiency
+
+
 @dataclass
 class DeviceInfo:
-    """Device information."""
-    id: str
-    name: str
-    backend: str
-    type: str  # "cpu", "gpu", "npu"
-    memory_total: int = 0
-    memory_available: int = 0
+    """
+    Device information.
+
+    Contains comprehensive device metadata for intelligent selection.
+    """
+    id: str                      # Device ID (e.g., "cuda:0", "npu", "cpu")
+    name: str                    # Human-readable name
+    backend: str                 # Backend name ("tensorrt", "openvino", etc.)
+    type: str                    # Device type: "cpu", "gpu", "npu", "vpu"
+    vendor: str = "unknown"      # Vendor: "nvidia", "intel", "amd", "qualcomm"
+    memory_total: int = 0        # Total memory in bytes
+    memory_available: int = 0    # Available memory in bytes
     supported_precisions: List[str] = field(default_factory=list)
+    is_available: bool = True    # Whether device is currently available
+    is_discrete: bool = False    # True for dGPU, False for iGPU
+    compute_capability: float = 0.0  # CUDA compute capability or equivalent
+    power_tdp_watts: int = 0     # Thermal design power
     is_available: bool = True
 
 

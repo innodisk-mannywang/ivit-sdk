@@ -1,8 +1,17 @@
 """
 Abstract base classes for runtime backends.
 
-Provides a consistent interface for all runtime implementations.
+.. deprecated:: 1.0.0
+    Pure Python runtimes are deprecated. All inference now uses C++ bindings.
 """
+
+import warnings
+
+warnings.warn(
+    "ivit.runtime.base is deprecated. All inference now uses C++ bindings.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional

@@ -196,6 +196,7 @@ class ModelExporter:
         self._export_onnx(onnx_path, input_shape, 17, None, None)
 
         try:
+            import openvino as ov
             from openvino import Core
             from openvino.runtime import serialize
 
@@ -209,8 +210,11 @@ class ModelExporter:
             if quantize == "int8" and calibration_data is not None:
                 model = self._quantize_openvino_int8(model, calibration_data)
             elif quantize == "fp16":
-                # FP16 is applied during compile
-                pass
+                # Compress weights to FP16 during serialization
+                xml_path = str(Path(path).with_suffix('.xml'))
+                ov.save_model(model, xml_path, compress_to_fp16=True)
+                logger.info(f"OpenVINO IR export complete (FP16): {xml_path}")
+                return xml_path
 
             # Serialize to IR format
             xml_path = str(Path(path).with_suffix('.xml'))

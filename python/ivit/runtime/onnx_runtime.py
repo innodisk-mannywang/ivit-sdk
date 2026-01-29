@@ -1,6 +1,17 @@
 """
 ONNX Runtime backend.
+
+.. deprecated:: 1.0.0
+    Pure Python ONNX Runtime is deprecated. All inference now uses C++ bindings.
 """
+
+import warnings
+
+warnings.warn(
+    "ivit.runtime.onnx_runtime is deprecated. Use C++ bindings instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from typing import Dict, List, Any, Optional
 import numpy as np

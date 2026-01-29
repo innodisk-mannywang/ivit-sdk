@@ -1,6 +1,19 @@
 """
 Runtime backends for iVIT-SDK.
+
+.. deprecated:: 1.0.0
+    Pure Python runtimes are deprecated. All inference now uses C++ bindings.
+    These modules are kept for reference only and will be removed in a future version.
 """
+
+import warnings
+
+warnings.warn(
+    "ivit.runtime is deprecated. All inference now uses C++ bindings. "
+    "This module will be removed in a future version.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from typing import Optional, List
 import logging
@@ -38,8 +51,11 @@ def get_runtime(backend: str):
         runtime = _create_openvino_runtime()
     elif backend == "tensorrt":
         runtime = _create_tensorrt_runtime()
+    elif backend == "qnn":
+        runtime = _create_qnn_runtime()
     elif backend == "snpe":
-        runtime = _create_snpe_runtime()
+        # Legacy support - redirect to QNN
+        runtime = _create_qnn_runtime()
     elif backend in ("onnxruntime", "onnx"):
         runtime = _create_onnxruntime()
     else:
@@ -72,14 +88,18 @@ def _create_tensorrt_runtime():
         return None
 
 
-def _create_snpe_runtime():
-    """Create SNPE runtime."""
+def _create_qnn_runtime():
+    """Create QNN (Qualcomm AI Engine Direct) runtime."""
     try:
-        from .snpe_runtime import SNPERuntime
-        return SNPERuntime()
+        from .qnn_runtime import QNNRuntime
+        return QNNRuntime()
     except ImportError as e:
-        logger.warning(f"SNPE not available: {e}")
+        logger.warning(f"QNN not available: {e}")
         return None
+
+
+# Legacy alias
+_create_snpe_runtime = _create_qnn_runtime
 
 
 def _create_onnxruntime():

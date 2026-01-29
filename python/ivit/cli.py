@@ -331,19 +331,17 @@ def _convert_to_openvino(input_path: Path, output_dir: Path, precision: str):
     core = ov.Core()
     model = core.read_model(str(input_path))
 
-    # Set precision if needed
-    if precision.lower() == "fp16":
-        from openvino.runtime import serialize
-        # Compress to FP16
-        print("  Compressing to FP16...")
-
     # Output paths
     model_name = input_path.stem
     output_xml = output_dir / f"{model_name}.xml"
     output_bin = output_dir / f"{model_name}.bin"
 
-    # Serialize
-    ov.serialize(model, str(output_xml))
+    # Serialize with FP16 compression if requested
+    if precision.lower() == "fp16":
+        print("  Compressing to FP16...")
+        ov.save_model(model, str(output_xml), compress_to_fp16=True)
+    else:
+        ov.serialize(model, str(output_xml))
 
     print(f"  Created: {output_xml}")
     print(f"  Created: {output_bin}")
