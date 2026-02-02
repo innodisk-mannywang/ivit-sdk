@@ -54,9 +54,11 @@ set(IVIT_BUNDLE_LIBRARIES "" CACHE INTERNAL "Libraries to bundle")
 # ============================================================================
 
 # OpenCV (required)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui videoio)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui videoio dnn)
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "OpenCV libs: ${OpenCV_LIBS}")
+message(STATUS "OpenCV lib dir: ${OpenCV_INSTALL_PATH}")
+message(STATUS "OpenCV include: ${OpenCV_INCLUDE_DIRS}")
 
 # ============================================================================
 # OpenVINO
@@ -196,13 +198,14 @@ target_include_directories(ivit
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        ${OpenCV_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_link_libraries(ivit
     PUBLIC
-        ${OpenCV_LIBS}
+        ${OpenCV_LIBRARIES}
 )
 
 # Link backend libraries
@@ -275,28 +278,28 @@ endif()
 # ============================================================================
 if(IVIT_BUILD_EXAMPLES)
     add_executable(simple_inference examples/cpp/simple_inference.cpp)
-    target_link_libraries(simple_inference PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(simple_inference PRIVATE ivit ${OpenCV_LIBRARIES})
 
     add_executable(classification_demo examples/cpp/classification_demo.cpp)
-    target_link_libraries(classification_demo PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(classification_demo PRIVATE ivit ${OpenCV_LIBRARIES})
 
     add_executable(detection_demo examples/cpp/detection_demo.cpp)
-    target_link_libraries(detection_demo PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(detection_demo PRIVATE ivit ${OpenCV_LIBRARIES})
 
     add_executable(video_demo examples/cpp/video_demo.cpp)
-    target_link_libraries(video_demo PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(video_demo PRIVATE ivit ${OpenCV_LIBRARIES})
 
     add_executable(si_quickstart examples/cpp/si_quickstart.cpp)
-    target_link_libraries(si_quickstart PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(si_quickstart PRIVATE ivit ${OpenCV_LIBRARIES})
 
     add_executable(embedded_optimization examples/cpp/embedded_optimization.cpp)
-    target_link_libraries(embedded_optimization PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(embedded_optimization PRIVATE ivit ${OpenCV_LIBRARIES})
 
     add_executable(backend_service examples/cpp/backend_service.cpp)
-    target_link_libraries(backend_service PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(backend_service PRIVATE ivit ${OpenCV_LIBRARIES})
 
     add_executable(data_analysis examples/cpp/data_analysis.cpp)
-    target_link_libraries(data_analysis PRIVATE ivit ${OpenCV_LIBS})
+    target_link_libraries(data_analysis PRIVATE ivit ${OpenCV_LIBRARIES})
 endif()
 
 # ============================================================================
