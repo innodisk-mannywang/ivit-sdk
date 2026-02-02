@@ -291,23 +291,66 @@ print(f"FPS: {fps.fps}")
 
 ### Q: 如何轉換模型格式？
 
+`ivit convert` 優先使用 C++ binding 進行轉換（與 APT 安裝的 OpenVINO 相容），不需要額外安裝 Python openvino 模組。
+
 ```bash
-# ONNX → OpenVINO
-ivit convert model.onnx -f openvino -o ./output/
+# ONNX → OpenVINO IR（FP32）
+ivit convert model.onnx -f openvino
+
+# ONNX → OpenVINO IR（FP16 壓縮）
+ivit convert model.onnx -f openvino --precision fp16
 
 # ONNX → TensorRT
 ivit convert model.onnx -f tensorrt -o ./output/
 
 # 指定精度
-ivit convert model.onnx -f tensorrt --precision FP16
+ivit convert model.onnx -f tensorrt --precision fp16
 ```
+
+### Q: 轉換前需要先編譯嗎？
+
+是的，`ivit convert` 依賴 C++ binding。首次使用或更新 SDK 後需要：
+
+```bash
+# 編譯
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DIVIT_BUILD_PYTHON=ON
+make -j$(nproc)
+cd ..
+
+# 安裝系統 library 與 Python 套件
+sudo cp build/lib/libivit.so /usr/local/lib/
+sudo ldconfig
+pip install -e .
+```
+
+### Q: 可以轉換 INT8 精度嗎？
+
+OpenVINO 的 INT8 量化**無法**透過 `ivit convert` 直接完成，因為 INT8 量化需要校準資料集（calibration dataset）來計算每一層的 scale 和 zero-point。
+
+如需 INT8 量化，請使用 [NNCF toolkit](https://github.com/openvinotoolkit/nncf)：
+
+```python
+import nncf
+import openvino as ov
+
+# 準備校準資料集
+calibration_dataset = nncf.Dataset(data_loader)
+
+# 量化模型
+model = ov.Core().read_model("model.xml")
+quantized_model = nncf.quantize(model, calibration_dataset)
+ov.save_model(quantized_model, "model_int8.xml")
+```
+
+TensorRT 的 FP16/INT8 可透過 `ivit convert --precision fp16` 或 `--precision int8` 直接轉換（INT8 精度取決於硬體支援）。
 
 ### Q: 轉換失敗怎麼辦？
 
-1. 確認來源模型有效
-2. 確認目標後端已安裝
-3. 檢查運算元支援
-4. 嘗試簡化模型
+1. 確認已完成編譯並安裝（見上方「轉換前需要先編譯嗎？」）
+2. 確認來源模型為有效的 ONNX 格式
+3. 確認目標後端已安裝（OpenVINO APT 套件或 TensorRT）
+4. 檢查運算元支援——嘗試簡化模型
 
 ```bash
 # 簡化 ONNX 模型

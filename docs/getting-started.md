@@ -475,6 +475,83 @@ config.precision = "fp16";
 Detector detector("model.onnx", "npu", config);
 ```
 
+### 模型轉換（`ivit convert`）
+
+SDK 提供 CLI 工具將 ONNX 模型轉換為各後端的優化格式。轉換優先使用 C++ binding（與 APT 安裝的 OpenVINO 相容），若 C++ binding 不可用則退回命令列工具（`ovc`）。
+
+#### 基本用法
+
+```bash
+# ONNX → OpenVINO IR（FP32）
+ivit convert model.onnx --format openvino
+
+# ONNX → OpenVINO IR（FP16 壓縮）
+ivit convert model.onnx --format openvino --precision fp16
+
+# ONNX → TensorRT Engine
+ivit convert model.onnx --format tensorrt --precision fp16
+
+# 指定輸出目錄
+ivit convert model.onnx --format openvino -o ./output/
+```
+
+#### 完整轉換流程（含編譯）
+
+首次使用或更新 SDK 後，需先編譯再轉換：
+
+```bash
+# 1. 編譯 C++ 核心與 Python binding
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DIVIT_BUILD_PYTHON=ON
+make -j$(nproc)
+cd ..
+
+# 2. 安裝系統 library
+sudo cp build/lib/libivit.so /usr/local/lib/
+sudo ldconfig
+
+# 3. 安裝 Python 套件
+pip install -e .
+
+# 4. 執行轉換
+ivit convert model.onnx --format openvino --precision fp16
+```
+
+#### 精度支援與限制
+
+| 精度 | OpenVINO | TensorRT | 說明 |
+|------|----------|----------|------|
+| `fp32` | ✅ | ✅ | 預設精度 |
+| `fp16` | ✅ | ✅ | 推薦用於 NPU / GPU |
+| `int8` | ❌ | ✅（需校準） | OpenVINO INT8 需使用 [NNCF](https://github.com/openvinotoolkit/nncf) 工具 |
+
+> **INT8 限制**：OpenVINO 的 INT8 量化需要校準資料集，無法透過 `ivit convert` 直接轉換。
+> 請使用 [NNCF toolkit](https://github.com/openvinotoolkit/nncf) 進行 INT8 量化。
+
+#### 轉換機制
+
+`ivit convert` 的轉換策略依優先順序：
+
+1. **C++ binding**（推薦）：使用 SDK 內建的 C++ `convert_model()` 函式，直接呼叫 OpenVINO/TensorRT C++ API。適用於 APT 安裝的 OpenVINO 環境。
+2. **命令列工具**（備援）：OpenVINO 使用 `ovc` 工具，TensorRT 使用 Python `tensorrt` 模組。
+
+#### C++ / Python API 轉換
+
+除 CLI 外，也可在程式中直接呼叫轉換 API：
+
+```cpp
+// C++
+#include "ivit/ivit.hpp"
+
+ivit::convert_model("yolov8n.onnx", "yolov8n.xml", "cpu", "fp16");
+```
+
+```python
+# Python
+import ivit
+ivit.convert_model("yolov8n.onnx", "yolov8n.xml", "cpu", "fp16")
+```
+
 ---
 
 ## 效能優化
