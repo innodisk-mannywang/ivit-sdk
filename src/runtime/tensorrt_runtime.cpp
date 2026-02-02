@@ -145,7 +145,10 @@ TensorRTEngine::~TensorRTEngine() {
         stream = nullptr;
     }
 
-    // 4. Destroy TRT objects in reverse creation order
+    // 4. Synchronize device before destroying TRT objects
+    cudaDeviceSynchronize();
+
+    // 5. Destroy TRT objects in reverse creation order
     context.reset();
     engine.reset();
     // runtime released automatically by member destructor
