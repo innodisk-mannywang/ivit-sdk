@@ -12,6 +12,7 @@
 #include <string>
 #include <chrono>
 #include <iomanip>
+#include <cstdlib>
 #include <opencv2/opencv.hpp>
 
 #include "ivit/ivit.hpp"
@@ -478,5 +479,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    return 0;
+    // Use _exit() to skip static destruction, which can cause segfault
+    // with TensorRT on newer GPUs during cleanup.
+    std::cout.flush();
+    std::cerr.flush();
+    _exit(0);
 }
