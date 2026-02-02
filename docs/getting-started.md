@@ -653,10 +653,28 @@ Detector detector("model.onnx", "npu", config);
 | `02_detection.py` | 物件偵測完整範例 |
 | `02_classification.py` | 影像分類範例 |
 
-```bash
-# 快速入門
-python examples/python/01_quickstart.py
+Python 範例需要先下載模型。有兩種方式：
 
+**方式 1：使用環境變數指定模型路徑（推薦）**
+
+```bash
+# 下載模型到 zoo 快取目錄
+ivit zoo download yolov8n
+
+# 透過環境變數指定模型路徑
+IVIT_MODEL_PATH=~/.cache/ivit/models/yolov8n.onnx python examples/python/01_quickstart.py
+```
+
+**方式 2：將模型放到範例預設路徑**
+
+```bash
+mkdir -p models/onnx
+ivit zoo download yolov8n
+cp ~/.cache/ivit/models/yolov8n.onnx models/onnx/
+python examples/python/01_quickstart.py
+```
+
+```bash
 # 物件偵測（使用 NPU）
 python examples/python/02_detection.py \
     -m yolov8n.onnx \
