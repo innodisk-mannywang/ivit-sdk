@@ -480,8 +480,21 @@ def _export_torchvision_onnx(name: str, onnx_path: Path, info: ModelInfo) -> Pat
     for part in weights_name.split("."):
         weights_enum = getattr(module if weights_enum is None else weights_enum, part)
 
-    model = getattr(module, func_name)(weights=weights_enum)
-    model.eval()
+    raw_model = getattr(module, func_name)(weights=weights_enum)
+    raw_model.eval()
+
+    # Segmentation models return OrderedDict with "out" and "aux" keys;
+    # wrap to return only the "out" tensor so ONNX has a single output.
+    if info.task == "segment":
+        class _SegWrapper(torch.nn.Module):
+            def __init__(self, m):
+                super().__init__()
+                self.m = m
+            def forward(self, x):
+                return self.m(x)["out"]
+        model = _SegWrapper(raw_model)
+    else:
+        model = raw_model
 
     h, w = info.input_size
     dummy = torch.randn(1, 3, h, w)
