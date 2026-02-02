@@ -44,7 +44,6 @@ Python: 3.10.12
 
 Available Backends:
   - OpenVINO 2024.0 ✓
-  - ONNX Runtime 1.16.0 ✓
 
 Devices:
   - cpu: Intel Core i7-1365U (OpenVINO)
@@ -249,7 +248,7 @@ model.configure_openvino(
 
 ## 範例程式
 
-完整範例程式位於：`examples/python/openvino_demo.py`
+完整範例程式位於：`examples/python/01_quickstart.py` 及 `examples/python/advanced/embedded_optimization.py`
 
 ```python
 #!/usr/bin/env python3

@@ -22,7 +22,6 @@ from .._ivit_core import (
     CallbackContext,
     OpenVINOConfig,
     TensorRTConfig,
-    ONNXRuntimeConfig,
     QNNConfig,
 )
 
@@ -74,7 +73,6 @@ __all__ = [
     # Runtime configs
     "OpenVINOConfig",
     "TensorRTConfig",
-    "ONNXRuntimeConfig",
     "QNNConfig",
     # Exceptions
     "IVITError",

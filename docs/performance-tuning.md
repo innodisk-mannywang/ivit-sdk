@@ -174,7 +174,9 @@ model.configure_tensorrt(
 )
 ```
 
-### 3.3 QNN 優化 (Qualcomm IQ Series)
+### 3.3 QNN 優化 (Qualcomm IQ Series)（規劃中）
+
+> **注意**：QNN 後端支援目前為規劃中功能，以下配置尚未提供。
 
 ```python
 model = ivit.load("model.onnx", device="iq9")  # IQ9/IQ8/IQ6
@@ -386,7 +388,7 @@ print(f"Latency: {1000/fps.fps:.1f}ms")
 | YOLOv8s | 280 | 420 | 580 |
 | YOLOv8x | 55 | 90 | 140 |
 
-### Qualcomm Snapdragon 8 Gen 2 (DSP)
+### Qualcomm Snapdragon 8 Gen 2 (DSP)（規劃中）
 
 | 模型 | FP16 FPS | INT8 FPS |
 |------|----------|----------|

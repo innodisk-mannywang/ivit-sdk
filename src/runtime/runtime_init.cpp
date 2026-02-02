@@ -13,9 +13,6 @@
 #include "ivit/runtime/openvino_runtime.hpp"
 #endif
 
-#ifdef IVIT_HAS_ONNXRUNTIME
-#include "ivit/runtime/onnx_runtime.hpp"
-#endif
 
 namespace ivit {
 
@@ -49,16 +46,6 @@ public:
         }
 #endif
 
-#ifdef IVIT_HAS_ONNXRUNTIME
-        try {
-            auto onnxruntime = std::make_shared<ONNXRuntimeBackend>();
-            if (onnxruntime->is_available()) {
-                factory.register_runtime(onnxruntime);
-            }
-        } catch (...) {
-            // ONNX Runtime not available, skip
-        }
-#endif
     }
 };
 

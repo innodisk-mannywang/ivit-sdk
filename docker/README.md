@@ -72,8 +72,8 @@ verify-sdk.sh --help
 驗證腳本會執行以下步驟：
 
 ### Python 驗證
-1. **安裝 Python 套件** - `pip install -e .`
-2. **執行 Python 測試** - `pytest tests/python/`
+1. **安裝 Python 套件** - `pip install .`
+2. **執行 Python 測試** - `pytest tests/integration/`
 3. **執行 Python 範例** - 物件偵測範例
 
 ### C++ 驗證
@@ -91,13 +91,13 @@ verify-sdk.sh --help
 ```bash
 # 安裝 Python 套件
 cd /workspace/ivit-sdk
-pip install -e .
+pip install .
 
 # 驗證安裝
-python3 -c "import ivit; print(ivit.__version__); ivit.devices()"
+python3 -c "import ivit; print(ivit.__version__); ivit.list_devices()"
 
 # 執行測試
-pytest tests/python/ -v
+pytest tests/integration/ -v
 
 # 執行範例
 python3 examples/python/01_quickstart.py
@@ -117,8 +117,8 @@ cd /tmp/ivit-sdk
 mkdir build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
-    -DIVIT_USE_ONNXRUNTIME=ON \
-    -DONNXRUNTIME_ROOT=/opt/onnxruntime \
+    -DIVIT_USE_OPENVINO=ON \
+    -DIVIT_USE_TENSORRT=ON \
     -DIVIT_BUILD_EXAMPLES=ON \
     -DIVIT_BUNDLE_DEPS=ON
 
@@ -167,14 +167,6 @@ docker run -it --rm --gpus all \
 
 ## 常見問題
 
-### Q: 編譯時找不到 ONNX Runtime？
-
-確保使用 `DONNXRUNTIME_ROOT=/opt/onnxruntime` 參數：
-
-```bash
-cmake .. -DONNXRUNTIME_ROOT=/opt/onnxruntime ...
-```
-
 ### Q: Python 測試失敗？
 
 確認 SDK 原始碼已正確掛載：
@@ -207,7 +199,6 @@ docker compose -f docker/docker-compose.yml run --rm \
 cmake .. \
     -DIVIT_USE_OPENVINO=ON \
     -DIVIT_USE_TENSORRT=ON \
-    -DIVIT_USE_ONNXRUNTIME=ON \
     ...
 ```
 

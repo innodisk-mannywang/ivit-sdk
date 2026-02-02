@@ -8,12 +8,12 @@
 
 ## 概述
 
-iVIT-SDK 是宜鼎科技開發的統一電腦視覺 SDK，提供跨硬體平台的一致性 API 介面。無論您使用的是 Intel、NVIDIA 還是 Qualcomm 的硬體，都可以使用相同的程式碼進行開發。
+iVIT-SDK 是宜鼎國際開發的統一電腦視覺 SDK，提供跨硬體平台的一致性 API 介面。無論您使用的是 Intel 還是 NVIDIA 的硬體，都可以使用相同的程式碼進行開發（Qualcomm 支援規劃中）。
 
 ### 特色
 
 - **統一 API** - 一套程式碼，支援多種硬體平台
-- **多後端支援** - Intel OpenVINO、NVIDIA TensorRT、Qualcomm QNN (IQ Series)
+- **多後端支援** - Intel OpenVINO、NVIDIA TensorRT、Qualcomm QNN (IQ Series) [規劃中]
 - **完整視覺任務** - 分類、物件偵測、語意分割、姿態估計
 - **遷移式學習** - 支援模型微調和訓練
 - **雙語言支援** - Python 和 C++ API
@@ -25,9 +25,11 @@ iVIT-SDK 是宜鼎科技開發的統一電腦視覺 SDK，提供跨硬體平台�
 |------|---------|------|------|
 | Intel | CPU、iGPU、NPU、VPU | OpenVINO | x86_64、ARM64 |
 | NVIDIA | GPU (dGPU、Jetson) | TensorRT | x86_64、ARM64 |
-| Qualcomm | IQ9/IQ8/IQ6 (Hexagon NPU) | QNN | ARM64 |
+| Qualcomm | IQ9/IQ8/IQ6 (Hexagon NPU) | QNN (規劃中) | ARM64 |
 
-### Qualcomm IQ Series 支援
+### Qualcomm IQ Series 支援 (規劃中)
+
+> **注意**：Qualcomm IQ Series 支援目前為規劃中功能，尚未正式提供。以下資訊為未來規劃參考。
 
 | 系列 | 晶片 | AI 效能 | 裝置代號 |
 |------|------|---------|---------|
@@ -48,13 +50,11 @@ pip install ivit-sdk
 # 安裝特定後端支援
 pip install ivit-sdk[openvino]     # Intel OpenVINO
 pip install ivit-sdk[tensorrt]     # NVIDIA TensorRT (需先安裝 CUDA)
-pip install ivit-sdk[onnxruntime]  # ONNX Runtime CPU
-pip install ivit-sdk[onnxruntime-gpu]  # ONNX Runtime GPU
 
 # 安裝 Model Zoo 支援（自動下載和轉換模型）
 pip install ivit-sdk[zoo]
 
-# 安裝全部功能 (Intel + ONNX Runtime + Zoo + 訓練 + 開發工具)
+# 安裝全部功能 (Intel + Zoo + 訓練 + 開發工具)
 pip install ivit-sdk[all]
 
 # NVIDIA CUDA 完整支援
@@ -70,7 +70,7 @@ pip install ivit-sdk[cuda]
 git clone https://github.com/innodisk-ai/ivit-sdk.git
 cd ivit-sdk
 
-# 下載 C++ 後端依賴庫（OpenVINO、ONNX Runtime）
+# 下載 C++ 後端依賴庫（OpenVINO）
 ./scripts/download_deps.sh
 
 # 建立建置目錄
@@ -363,7 +363,7 @@ clang-format -i src/**/*.cpp include/**/*.hpp
 
 ## 關於宜鼎
 
-[宜鼎科技](https://www.innodisk.com) 是全球領先的工業級儲存和嵌入式周邊解決方案供應商，致力於提供高品質的 AI 運算平台和解決方案。
+[宜鼎國際](https://www.innodisk.com) 是全球領先的工業級儲存和嵌入式周邊解決方案供應商，致力於提供高品質的 AI 運算平台和解決方案。
 
 ---
 

@@ -64,20 +64,6 @@ RUN pip3 install --upgrade pip setuptools wheel && \
     scikit-build-core
 
 # ============================================================================
-# ONNX Runtime (CPU 版本，作為基本後端)
-# ============================================================================
-RUN pip3 install --no-cache-dir onnxruntime
-
-# 下載 ONNX Runtime C++ SDK
-RUN mkdir -p /opt/onnxruntime && \
-    wget -q https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-1.17.0.tgz && \
-    tar -xzf onnxruntime-linux-x64-1.17.0.tgz -C /opt/onnxruntime --strip-components=1 && \
-    rm onnxruntime-linux-x64-1.17.0.tgz
-
-ENV ONNXRUNTIME_ROOT=/opt/onnxruntime
-ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH
-
-# ============================================================================
 # 測試資料準備
 # ============================================================================
 RUN mkdir -p /opt/test-data/images /opt/test-data/models
@@ -90,7 +76,7 @@ RUN wget -q -O /opt/test-data/images/bus.jpg \
 
 # 下載預訓練模型（YOLOv8n ONNX）
 RUN pip3 install --no-cache-dir ultralytics && \
-    python3 -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx')" && \
+    python3 -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx', opset=17)" && \
     mv yolov8n.onnx /opt/test-data/models/ && \
     pip3 uninstall -y ultralytics
 

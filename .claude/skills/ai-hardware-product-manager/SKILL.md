@@ -605,7 +605,6 @@ description: AI hardware product management skill specialized in AI accelerators
 **AI 框架支援**：
 - TensorFlow 2.15+
 - PyTorch 2.1+
-- ONNX Runtime
 - TensorRT 9.0+
 
 ## 效能目標

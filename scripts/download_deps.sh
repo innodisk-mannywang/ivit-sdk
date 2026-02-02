@@ -39,38 +39,6 @@ mkdir -p "$DEPS_DIR"
 mkdir -p "$INSTALL_DIR"
 
 # ============================================================================
-# 下載 ONNX Runtime
-# ============================================================================
-download_onnxruntime() {
-    local VERSION="1.17.0"
-    local GPU_SUFFIX=""
-
-    # 檢查是否有 CUDA
-    if command -v nvcc &> /dev/null || [ -d "/usr/local/cuda" ]; then
-        GPU_SUFFIX="-gpu"
-        log_info "CUDA detected, downloading GPU version"
-    fi
-
-    local URL="https://github.com/microsoft/onnxruntime/releases/download/v${VERSION}/onnxruntime-linux-${ARCH_SUFFIX}${GPU_SUFFIX}-${VERSION}.tgz"
-    local ARCHIVE="${DEPS_DIR}/onnxruntime-${VERSION}.tgz"
-
-    if [ -d "${INSTALL_DIR}/onnxruntime" ]; then
-        log_info "ONNX Runtime already exists, skipping..."
-        return
-    fi
-
-    log_info "Downloading ONNX Runtime ${VERSION}..."
-    wget -q --show-progress -O "$ARCHIVE" "$URL"
-
-    log_info "Extracting ONNX Runtime..."
-    mkdir -p "${INSTALL_DIR}/onnxruntime"
-    tar -xzf "$ARCHIVE" -C "${INSTALL_DIR}/onnxruntime" --strip-components=1
-
-    rm -f "$ARCHIVE"
-    log_info "ONNX Runtime installed to ${INSTALL_DIR}/onnxruntime"
-}
-
-# ============================================================================
 # 下載 OpenVINO
 # ============================================================================
 download_openvino() {
@@ -155,14 +123,6 @@ verify_installation() {
 
     local has_error=0
 
-    # 檢查 ONNX Runtime
-    if [ -f "${INSTALL_DIR}/onnxruntime/lib/libonnxruntime.so" ]; then
-        log_info "✓ ONNX Runtime: OK"
-    else
-        log_warn "✗ ONNX Runtime: Not found"
-        has_error=1
-    fi
-
     # 檢查 OpenVINO
     if [ -f "${INSTALL_DIR}/runtime/lib/intel64/libopenvino.so" ] || \
        [ -f "${INSTALL_DIR}/runtime/lib/libopenvino.so" ]; then
@@ -194,13 +154,6 @@ create_cmake_config() {
 
 set(IVIT_DEPS_INSTALL_DIR "${INSTALL_DIR}" CACHE PATH "Dependencies install directory" FORCE)
 
-# ONNX Runtime
-if(EXISTS "${INSTALL_DIR}/onnxruntime/lib/libonnxruntime.so")
-    set(ONNXRUNTIME_ROOT "${INSTALL_DIR}/onnxruntime" CACHE PATH "ONNX Runtime root" FORCE)
-    set(ONNXRUNTIME_INCLUDE_DIR "${INSTALL_DIR}/onnxruntime/include" CACHE PATH "ONNX Runtime include" FORCE)
-    set(ONNXRUNTIME_LIBRARY "${INSTALL_DIR}/onnxruntime/lib/libonnxruntime.so" CACHE FILEPATH "ONNX Runtime library" FORCE)
-endif()
-
 # OpenVINO
 if(EXISTS "${INSTALL_DIR}/runtime/cmake/OpenVINOConfig.cmake")
     set(OpenVINO_DIR "${INSTALL_DIR}/runtime/cmake" CACHE PATH "OpenVINO CMake dir" FORCE)
@@ -225,25 +178,17 @@ main() {
     log_info "iVIT-SDK Dependencies Downloader"
     log_info "========================================="
 
-    local download_onnx=1
     local download_ov=1
     local download_trt=0
 
     # 解析參數
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --onnxruntime-only)
-                download_ov=0
-                download_trt=0
-                shift
-                ;;
             --openvino-only)
-                download_onnx=0
                 download_trt=0
                 shift
                 ;;
             --all)
-                download_onnx=1
                 download_ov=1
                 download_trt=1
                 shift
@@ -256,7 +201,6 @@ main() {
                 echo "Usage: $0 [options]"
                 echo ""
                 echo "Options:"
-                echo "  --onnxruntime-only  Only download ONNX Runtime"
                 echo "  --openvino-only     Only download OpenVINO"
                 echo "  --tensorrt          Show TensorRT setup instructions"
                 echo "  --all               Download all dependencies"
@@ -271,10 +215,6 @@ main() {
     done
 
     # 下載依賴
-    if [ $download_onnx -eq 1 ]; then
-        download_onnxruntime
-    fi
-
     if [ $download_ov -eq 1 ]; then
         download_openvino
     fi

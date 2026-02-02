@@ -8,6 +8,10 @@
 
 #ifdef IVIT_HAS_TENSORRT
 
+// Suppress deprecation warnings from TensorRT 10.12 headers
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include <NvOnnxParser.h>
 #include <fstream>
 #include <iostream>
@@ -74,82 +78,77 @@ void TensorRTLogger::log(Severity severity, const char* msg) noexcept {
 // TensorRTEngine implementation
 // ============================================================================
 
+// Track whether we're in static destruction phase.
+// TensorRT objects cannot be safely deleted during atexit/static destruction
+// because the TRT runtime and CUDA driver may be in inconsistent state.
+static bool g_in_shutdown = false;
+
+static void mark_shutdown() { g_in_shutdown = true; }
+
+namespace {
+struct ShutdownRegistrar {
+    ShutdownRegistrar() { std::atexit(mark_shutdown); }
+};
+static ShutdownRegistrar s_shutdown_registrar;
+}
+
 TensorRTEngine::~TensorRTEngine() {
-    std::cerr << "[DEBUG] TensorRTEngine::~TensorRTEngine() start" << std::endl;
+    if (g_in_shutdown) {
+        // During static destruction / atexit, TensorRT's internal state
+        // may already be torn down. Deleting ICudaEngine or IExecutionContext
+        // at this point causes segfault inside libnvinfer.so.
+        // Intentionally leak — the OS reclaims everything on process exit.
 
-    // IMPORTANT: Check if CUDA context is still valid before cleanup.
-    int device;
-    cudaError_t err = cudaGetDevice(&device);
-    std::cerr << "[DEBUG] cudaGetDevice returned: " << cudaGetErrorString(err) << std::endl;
-
-    if (err != cudaSuccess) {
-        std::cerr << "[DEBUG] CUDA context invalid, skipping cleanup" << std::endl;
-        context.reset();
+        // Replace shared_ptr deleters with no-ops to prevent delete calls
+        if (context) context.reset(static_cast<nvinfer1::IExecutionContext*>(nullptr), [](nvinfer1::IExecutionContext*){});
+        if (engine)  engine.reset(static_cast<nvinfer1::ICudaEngine*>(nullptr), [](nvinfer1::ICudaEngine*){});
+        if (runtime) runtime.reset(static_cast<nvinfer1::IRuntime*>(nullptr), [](nvinfer1::IRuntime*){});
         device_buffers.clear();
         bindings.clear();
         stream = nullptr;
-        engine.reset();
         return;
     }
 
-    // 1. First, synchronize any pending operations
-    std::cerr << "[DEBUG] Synchronizing stream..." << std::endl;
+    // Normal cleanup path (explicit unload during program execution)
+    int device;
+    cudaError_t err = cudaGetDevice(&device);
+
+    if (err != cudaSuccess) {
+        // CUDA context gone — same leak-safe approach
+        if (context) context.reset(static_cast<nvinfer1::IExecutionContext*>(nullptr), [](nvinfer1::IExecutionContext*){});
+        if (engine)  engine.reset(static_cast<nvinfer1::ICudaEngine*>(nullptr), [](nvinfer1::ICudaEngine*){});
+        if (runtime) runtime.reset(static_cast<nvinfer1::IRuntime*>(nullptr), [](nvinfer1::IRuntime*){});
+        device_buffers.clear();
+        bindings.clear();
+        stream = nullptr;
+        return;
+    }
+
+    // 1. Synchronize any pending operations
     if (stream) {
-        err = cudaStreamSynchronize(stream);
-        std::cerr << "[DEBUG] cudaStreamSynchronize returned: " << cudaGetErrorString(err) << std::endl;
-        if (err != cudaSuccess) {
-            context.reset();
-            device_buffers.clear();
-            bindings.clear();
-            stream = nullptr;
-            engine.reset();
-            return;
-        }
+        cudaStreamSynchronize(stream);
     }
 
-    // 2. Clear tensor addresses in context BEFORE freeing buffers
-    //    This is important for TensorRT 10 which uses setTensorAddress
-    std::cerr << "[DEBUG] Clearing tensor addresses..." << std::endl;
-    if (context && engine) {
-        int num_io = engine->getNbIOTensors();
-        for (int i = 0; i < num_io; i++) {
-            const char* name = engine->getIOTensorName(i);
-            context->setTensorAddress(name, nullptr);
-        }
-    }
-    std::cerr << "[DEBUG] Tensor addresses cleared" << std::endl;
-
-    // 3. Free device buffers BEFORE destroying context
-    //    (reverse order of allocation)
-    std::cerr << "[DEBUG] Freeing " << device_buffers.size() << " device buffers..." << std::endl;
+    // 2. Free device buffers
     for (size_t i = 0; i < device_buffers.size(); i++) {
         if (device_buffers[i]) {
-            std::cerr << "[DEBUG] Freeing buffer " << i << std::endl;
             cudaFree(device_buffers[i]);
             device_buffers[i] = nullptr;
         }
     }
     device_buffers.clear();
     bindings.clear();
-    std::cerr << "[DEBUG] Buffers freed" << std::endl;
 
-    // 4. Destroy CUDA stream
-    std::cerr << "[DEBUG] Destroying stream..." << std::endl;
+    // 3. Destroy CUDA stream
     if (stream) {
         cudaStreamDestroy(stream);
         stream = nullptr;
     }
-    std::cerr << "[DEBUG] Stream destroyed" << std::endl;
 
-    // 5. Now destroy execution context
-    std::cerr << "[DEBUG] Resetting context..." << std::endl;
+    // 4. Destroy TRT objects in reverse creation order
     context.reset();
-    std::cerr << "[DEBUG] Context reset done" << std::endl;
-
-    // 6. Engine will be released when shared_ptr goes out of scope
-    std::cerr << "[DEBUG] Resetting engine..." << std::endl;
     engine.reset();
-    std::cerr << "[DEBUG] TensorRTEngine::~TensorRTEngine() complete" << std::endl;
+    // runtime released automatically by member destructor
 }
 
 // ============================================================================
@@ -591,6 +590,7 @@ TensorRTEngine* TensorRTRuntime::create_engine_wrapper(
     int device_id
 ) {
     auto wrapper = new TensorRTEngine();
+    wrapper->runtime = runtime_;  // prevent static destruction order issue
     wrapper->engine = engine;
     wrapper->device_id = device_id;
 
@@ -701,5 +701,7 @@ TensorRTRuntime& get_tensorrt_runtime() {
 }
 
 } // namespace ivit
+
+#pragma GCC diagnostic pop
 
 #endif // IVIT_HAS_TENSORRT

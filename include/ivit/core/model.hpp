@@ -28,7 +28,6 @@ namespace ivit {
 class IRuntime;
 struct OpenVINOConfig;
 struct TensorRTConfig;
-struct ONNXRuntimeConfig;
 struct QNNConfig;
 class VideoSource;
 
@@ -258,11 +257,6 @@ public:
      * @brief Configure TensorRT-specific settings
      */
     virtual void configure_tensorrt(const TensorRTConfig& config);
-
-    /**
-     * @brief Configure ONNX Runtime-specific settings
-     */
-    virtual void configure_onnxruntime(const ONNXRuntimeConfig& config);
 
     /**
      * @brief Configure QNN-specific settings

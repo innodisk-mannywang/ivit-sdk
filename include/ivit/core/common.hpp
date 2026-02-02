@@ -92,7 +92,6 @@ enum class TaskType {
 enum class BackendType {
     OpenVINO,    ///< Intel: CPU, iGPU, NPU, VPU
     TensorRT,    ///< NVIDIA: CUDA GPUs, Jetson
-    ONNXRuntime, ///< Cross-platform fallback
     QNN,         ///< Qualcomm: IQ Series NPU (Hexagon) via AI Engine Direct
     Auto,        ///< Automatic selection
     Unknown
@@ -107,7 +106,7 @@ enum class BackendType {
  */
 struct LoadConfig {
     std::string device = "auto";       ///< Target device: "auto", "cpu", "gpu:0", "cuda:0", "npu"
-    std::string backend = "auto";      ///< Backend: "auto", "openvino", "tensorrt", "onnxruntime"
+    std::string backend = "auto";      ///< Backend: "auto", "openvino", "tensorrt"
     std::string task = "";             ///< Task hint: "classification", "detection", etc.
     int batch_size = 1;                ///< Batch size
     std::string precision = "fp32";    ///< Precision: "fp32", "fp16", "int8"
@@ -245,7 +244,6 @@ inline std::string to_string(BackendType backend) {
     switch (backend) {
         case BackendType::OpenVINO: return "openvino";
         case BackendType::TensorRT: return "tensorrt";
-        case BackendType::ONNXRuntime: return "onnxruntime";
         case BackendType::QNN: return "qnn";
         case BackendType::Auto: return "auto";
         default: return "unknown";

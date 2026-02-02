@@ -166,7 +166,7 @@ if [ "$CPP_ONLY" != true ]; then
     cd "$SDK_DIR"
 
     # 安裝 Python 套件
-    pip3 install -e . --quiet
+    pip3 install . --quiet
 
     print_success "Python package installed"
 
@@ -198,7 +198,7 @@ if [ "$CPP_ONLY" != true ] && [ "$SKIP_TESTS" != true ]; then
     cd "$SDK_DIR"
 
     # 執行測試
-    python3 -m pytest tests/python/ -v --tb=short 2>&1 | tail -20
+    python3 -m pytest tests/integration/ -v --tb=short 2>&1 | tail -20
 
     print_success "Python tests passed"
 fi
@@ -274,7 +274,7 @@ if [ "$PYTHON_ONLY" != true ]; then
     # 下載依賴
     echo "Downloading dependencies..."
     if [ -f "./scripts/download_deps.sh" ]; then
-        ./scripts/download_deps.sh --onnxruntime-only 2>&1 | tail -5
+        ./scripts/download_deps.sh --openvino-only 2>&1 | tail -5
     fi
 
     # CMake 配置
@@ -284,10 +284,8 @@ if [ "$PYTHON_ONLY" != true ]; then
 
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
-        -DIVIT_USE_OPENVINO=OFF \
+        -DIVIT_USE_OPENVINO=ON \
         -DIVIT_USE_TENSORRT=OFF \
-        -DIVIT_USE_ONNXRUNTIME=ON \
-        -DONNXRUNTIME_ROOT=/opt/onnxruntime \
         -DIVIT_BUILD_TESTS=ON \
         -DIVIT_BUILD_EXAMPLES=ON \
         -DIVIT_BUILD_PYTHON=OFF \

@@ -108,7 +108,7 @@ class IntegrationTester:
             # 3. 測試 API 結構
             from ivit.core import LoadConfig, InferConfig
 
-            config = LoadConfig(device="cpu", backend="onnxruntime")
+            config = LoadConfig(device="cpu", backend="openvino")
             infer_config = InferConfig(conf_threshold=0.5, iou_threshold=0.45)
 
             return {
@@ -352,7 +352,6 @@ class IntegrationTester:
             from ivit.core.runtime_config import (
                 OpenVINOConfig,
                 TensorRTConfig,
-                ONNXRuntimeConfig,
                 SNPEConfig,
             )
 
@@ -378,15 +377,6 @@ class IntegrationTester:
                 "workspace_mb": trt_config.workspace_size // (1 << 20),
                 "fp16": trt_config.enable_fp16,
                 "dla_core": trt_config.dla_core
-            }
-
-            # ONNX Runtime 配置
-            ort_config = ONNXRuntimeConfig()
-            ort_config.num_threads = 4
-            ort_config.enable_cuda_graph = True
-            configs["ONNXRuntime"] = {
-                "threads": ort_config.num_threads,
-                "cuda_graph": ort_config.enable_cuda_graph
             }
 
             # SNPE 配置

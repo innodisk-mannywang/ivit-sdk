@@ -1,6 +1,6 @@
 # iVIT-SDK Getting Started Guide
 
-iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺推理 SDK，支援多種 AI 加速器後端，包括 Intel OpenVINO、NVIDIA TensorRT 和 Qualcomm QNN (IQ Series)。
+iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺推理 SDK，支援多種 AI 加速器後端，包括 Intel OpenVINO、NVIDIA TensorRT，以及 Qualcomm QNN (IQ Series)（規劃中）。
 
 ## 目錄
 
@@ -30,8 +30,8 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 ### 依賴項
 - OpenCV 4.5+
 - (可選) OpenVINO 2024.0+
-- (可選) CUDA 11.8+ 與 TensorRT 8.6+
-- (可選) Qualcomm AI Engine Direct SDK (QNN)
+- (可選) CUDA 11.8+ 與 TensorRT >= 8.6
+- (可選) Qualcomm AI Engine Direct SDK (QNN)（規劃中）
 
 ---
 
@@ -47,7 +47,7 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 git clone https://github.com/innodisk/ivit-sdk.git
 cd ivit-sdk
 
-# 2. 下載 C++ 後端依賴庫（OpenVINO、ONNX Runtime）
+# 2. 下載 C++ 後端依賴庫（OpenVINO）
 ./scripts/download_deps.sh
 
 # 3. 安裝 Python 依賴項（若需要 Python 綁定）
@@ -72,18 +72,15 @@ sudo make install
 ```
 
 > **重要**：
-> - 步驟 2 的 `download_deps.sh` 會自動下載 **ONNX Runtime** 和 **OpenVINO**。
-> - **TensorRT** 需要從 [NVIDIA Developer](https://developer.nvidia.com/tensorrt) 手動下載（需登入帳號），然後解壓到 `deps/install/tensorrt/`。
+> - 步驟 2 的 `download_deps.sh` 會自動下載 **OpenVINO**。
+> - **TensorRT** 需要 **>= 8.6 版本**，請從 [NVIDIA Developer](https://developer.nvidia.com/tensorrt) 手動下載（需登入帳號），然後解壓到 `deps/install/tensorrt/`。
 > - `-DIVIT_BUNDLE_DEPS=ON` 會啟用 `deps/install/` 目錄中的 C++ SDK。若不設定此參數，CMake 將無法找到這些後端。
 
 ### download_deps.sh 選項
 
 ```bash
-# 下載所有依賴（預設：ONNX Runtime + OpenVINO）
+# 下載所有依賴（預設：OpenVINO）
 ./scripts/download_deps.sh
-
-# 僅下載 ONNX Runtime
-./scripts/download_deps.sh --onnxruntime-only
 
 # 僅下載 OpenVINO
 ./scripts/download_deps.sh --openvino-only
@@ -124,7 +121,6 @@ cmake .. \
 | `IVIT_BUILD_EXAMPLES` | ON | 編譯範例程式 |
 | `IVIT_USE_OPENVINO` | ON | 啟用 OpenVINO 後端 |
 | `IVIT_USE_TENSORRT` | ON | 啟用 TensorRT 後端 |
-| `IVIT_USE_ONNXRUNTIME` | ON | 啟用 ONNX Runtime 後端 |
 | `IVIT_BUNDLE_DEPS` | OFF | **使用 deps/install 中的 C++ SDK**（建議開啟） |
 
 ### 預期輸出
@@ -136,7 +132,6 @@ cmake .. \
 --   OpenVINO:       ON
 --   TensorRT:       ON
 --   QNN:            OFF
---   ONNX Runtime:   ON
 ```
 
 若顯示 `OFF`，請確認：
@@ -416,14 +411,14 @@ struct BBox {
 | 裝置字串 | 說明 | 後端 |
 |----------|------|------|
 | `auto` | 自動選擇最佳裝置 | 自動 |
-| `cpu` | CPU | OpenVINO / ONNX Runtime |
+| `cpu` | CPU | OpenVINO |
 | `gpu:0` | Intel 內顯 | OpenVINO |
 | `cuda:0` | NVIDIA GPU | TensorRT |
 | `npu` | Intel NPU | OpenVINO |
 | `vpu` | Intel VPU (Myriad) | OpenVINO |
-| `iq9` | Qualcomm IQ9 (QCS9075) | QNN |
-| `iq8` | Qualcomm IQ8 (QCS8550) | QNN |
-| `iq6` | Qualcomm IQ6 (QCS6490) | QNN |
+| `iq9` | Qualcomm IQ9 (QCS9075) | QNN (規劃中) |
+| `iq8` | Qualcomm IQ8 (QCS8550) | QNN (規劃中) |
+| `iq6` | Qualcomm IQ6 (QCS6490) | QNN (規劃中) |
 
 ### 裝置發現
 
@@ -510,7 +505,7 @@ Detector detector("model.onnx", "cuda:0", config);
 
 ```
 效能排序（相同硬體）:
-TensorRT (NVIDIA GPU) > OpenVINO (Intel CPU/GPU/NPU) > ONNX Runtime
+TensorRT (NVIDIA GPU) > OpenVINO (Intel CPU/GPU/NPU)
 ```
 
 ### 2. 使用 FP16 精度

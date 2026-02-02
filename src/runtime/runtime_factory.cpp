@@ -43,20 +43,13 @@ std::shared_ptr<IRuntime> RuntimeFactory::get_runtime_for_device(const std::stri
 
     if (backend == BackendType::Auto) {
         // Try to find the best available backend
-        // Priority: TensorRT (GPU) > OpenVINO > ONNXRuntime
-        if (device.find("cuda") != std::string::npos ||
-            device.find("gpu") != std::string::npos) {
-            if (runtimes_.count(BackendType::TensorRT)) {
-                return runtimes_[BackendType::TensorRT];
-            }
+        // Priority: TensorRT > OpenVINO
+        if (runtimes_.count(BackendType::TensorRT)) {
+            return runtimes_[BackendType::TensorRT];
         }
 
         if (runtimes_.count(BackendType::OpenVINO)) {
             return runtimes_[BackendType::OpenVINO];
-        }
-
-        if (runtimes_.count(BackendType::ONNXRuntime)) {
-            return runtimes_[BackendType::ONNXRuntime];
         }
 
         return nullptr;
@@ -87,16 +80,11 @@ std::shared_ptr<IRuntime> RuntimeFactory::get_best_runtime(
         if (rt) return rt;
     } else if (ext == ".onnx") {
         // ONNX can be used by multiple backends
-        // Choose based on device
-        if (device.find("cuda") != std::string::npos) {
-            auto rt = get_runtime(BackendType::TensorRT);
-            if (rt) return rt;
-        }
-
-        auto rt = get_runtime(BackendType::OpenVINO);
+        // Priority: TensorRT > OpenVINO
+        auto rt = get_runtime(BackendType::TensorRT);
         if (rt) return rt;
 
-        rt = get_runtime(BackendType::ONNXRuntime);
+        rt = get_runtime(BackendType::OpenVINO);
         if (rt) return rt;
     }
 

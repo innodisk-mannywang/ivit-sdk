@@ -76,4 +76,4 @@ def get_backend_for_device(device_id: str) -> str:
         return "tensorrt"
     if "npu" in device_id or "vpu" in device_id:
         return "openvino"
-    return "onnxruntime"
+    return "openvino"

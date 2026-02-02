@@ -771,10 +771,6 @@ void Model::configure_tensorrt(const TensorRTConfig& /*config*/) {
     throw IVITError("TensorRT configuration not supported by this model backend");
 }
 
-void Model::configure_onnxruntime(const ONNXRuntimeConfig& /*config*/) {
-    throw IVITError("ONNX Runtime configuration not supported by this model backend");
-}
-
 void Model::configure_qnn(const QNNConfig& /*config*/) {
     throw IVITError("QNN configuration not supported by this model backend");
 }

@@ -1,6 +1,11 @@
 # ============================================================================
 # Dependencies.cmake
 # 依賴庫管理 - 支援系統安裝或打包模式
+#
+# NOTE: This file is currently UNUSED. The main CMakeLists.txt handles
+# dependency discovery inline. This module is reserved for future
+# modularization -- when dependency logic is factored out of
+# CMakeLists.txt, add `include(cmake/Dependencies.cmake)` there.
 # ============================================================================
 
 include(FetchContent)
@@ -62,65 +67,6 @@ macro(setup_openvino)
     else()
         # 使用系統安裝的 OpenVINO
         find_package(OpenVINO QUIET COMPONENTS Runtime)
-    endif()
-endmacro()
-
-# ============================================================================
-# ONNX Runtime 依賴
-# ============================================================================
-macro(setup_onnxruntime)
-    if(IVIT_BUNDLE_DEPS AND EXISTS "${IVIT_DEPS_INSTALL_DIR}/onnxruntime")
-        # 使用打包的 ONNX Runtime
-        message(STATUS "Using bundled ONNX Runtime")
-
-        set(ONNXRUNTIME_ROOT "${IVIT_DEPS_INSTALL_DIR}/onnxruntime")
-        set(ONNXRUNTIME_INCLUDE_DIR "${ONNXRUNTIME_ROOT}/include")
-        set(ONNXRUNTIME_LIBRARY "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so")
-
-        # 標記需要打包的庫
-        file(GLOB ORT_LIBS "${ONNXRUNTIME_ROOT}/lib/*.so*")
-        list(APPEND IVIT_BUNDLE_LIBRARIES ${ORT_LIBS})
-
-    elseif(IVIT_DOWNLOAD_DEPS)
-        # 下載預編譯的 ONNX Runtime
-        message(STATUS "Downloading ONNX Runtime...")
-
-        set(ORT_VERSION "1.17.0")
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-            set(ORT_ARCH "aarch64")
-        else()
-            set(ORT_ARCH "x64")
-        endif()
-
-        # GPU 版本
-        if(CUDA_FOUND)
-            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-${ORT_ARCH}-gpu-${ORT_VERSION}.tgz")
-        else()
-            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}.tgz")
-        endif()
-
-        FetchContent_Declare(
-            onnxruntime_pkg
-            URL ${ORT_URL}
-            SOURCE_DIR ${IVIT_DEPS_DIR}/onnxruntime
-        )
-        FetchContent_MakeAvailable(onnxruntime_pkg)
-
-        set(ONNXRUNTIME_ROOT "${IVIT_DEPS_DIR}/onnxruntime")
-        set(ONNXRUNTIME_INCLUDE_DIR "${ONNXRUNTIME_ROOT}/include")
-        set(ONNXRUNTIME_LIBRARY "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so")
-
-    else()
-        # 使用系統安裝的 ONNX Runtime
-        find_package(onnxruntime QUIET)
-        if(NOT onnxruntime_FOUND)
-            find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
-                HINTS ${ONNXRUNTIME_ROOT} /usr/local /usr
-                PATH_SUFFIXES include onnxruntime/include)
-            find_library(ONNXRUNTIME_LIBRARY onnxruntime
-                HINTS ${ONNXRUNTIME_ROOT} /usr/local /usr
-                PATH_SUFFIXES lib lib64)
-        endif()
     endif()
 endmacro()
 

@@ -49,7 +49,7 @@ iVIT-SDK 支援 Python 3.9 及以上版本。
 | ONNX | .onnx | 所有 |
 | OpenVINO IR | .xml + .bin | OpenVINO |
 | TensorRT Engine | .engine, .trt | TensorRT |
-| Qualcomm DLC | .dlc | QNN |
+| Qualcomm DLC | .dlc | QNN (規劃中) |
 
 ### Q: 如何載入模型？
 

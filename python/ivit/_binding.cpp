@@ -592,15 +592,6 @@ PYBIND11_MODULE(_ivit_core, m) {
         .def_readwrite("calibration_cache", &ivit::TensorRTConfig::calibration_cache)
         .def_readwrite("timing_cache", &ivit::TensorRTConfig::timing_cache);
 
-    py::class_<ivit::ONNXRuntimeConfig>(m, "ONNXRuntimeConfig", "ONNX Runtime configuration")
-        .def(py::init<>())
-        .def_readwrite("execution_provider", &ivit::ONNXRuntimeConfig::execution_provider)
-        .def_readwrite("intra_op_num_threads", &ivit::ONNXRuntimeConfig::intra_op_num_threads)
-        .def_readwrite("inter_op_num_threads", &ivit::ONNXRuntimeConfig::inter_op_num_threads)
-        .def_readwrite("graph_optimization_level", &ivit::ONNXRuntimeConfig::graph_optimization_level)
-        .def_readwrite("enable_mem_pattern", &ivit::ONNXRuntimeConfig::enable_mem_pattern)
-        .def_readwrite("enable_cpu_mem_arena", &ivit::ONNXRuntimeConfig::enable_cpu_mem_arena);
-
     py::class_<ivit::QNNConfig>(m, "QNNConfig", "Qualcomm QNN configuration")
         .def(py::init<>())
         .def_readwrite("backend", &ivit::QNNConfig::backend)
@@ -703,7 +694,6 @@ PYBIND11_MODULE(_ivit_core, m) {
         // Hardware config
         .def("configure_openvino", &ivit::Model::configure_openvino, py::arg("config"))
         .def("configure_tensorrt", &ivit::Model::configure_tensorrt, py::arg("config"))
-        .def("configure_onnxruntime", &ivit::Model::configure_onnxruntime, py::arg("config"))
         .def("configure_qnn", &ivit::Model::configure_qnn, py::arg("config"))
 
         // TTA

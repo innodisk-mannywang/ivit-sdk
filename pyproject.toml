@@ -59,13 +59,6 @@ tensorrt = [
     "tensorrt>=8.6",
     "pycuda>=2022.1",
 ]
-onnxruntime = [
-    "onnxruntime>=1.15",
-]
-onnxruntime-gpu = [
-    "onnxruntime-gpu>=1.15",
-]
-
 # Feature dependencies
 zoo = [
     "ultralytics>=8.0",
@@ -86,11 +79,11 @@ dev = [
 ]
 # Combined installations
 all = [
-    "ivit-sdk[openvino,tensorrt,onnxruntime,onnxruntime-gpu,zoo,train,dev]",
+    "ivit-sdk[openvino,tensorrt,zoo,train,dev]",
 ]
 # Alias for backward compatibility
 cuda = [
-    "ivit-sdk[tensorrt,onnxruntime-gpu]",
+    "ivit-sdk[tensorrt]",
 ]
 
 [project.urls]

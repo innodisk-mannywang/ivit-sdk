@@ -189,9 +189,8 @@ python my_app.py
 
 | 裝置 | 後端 |
 |------|------|
-| `cuda:*` | TensorRT（優先）或 ONNX Runtime CUDA |
+| `cuda:*` | TensorRT |
 | `cpu`, `gpu:*`, `npu`, `vpu` | OpenVINO |
-| 其他 | ONNX Runtime |
 
 ### TensorRT 優先
 
@@ -199,8 +198,8 @@ python my_app.py
 
 ```
 TensorRT 可用 → 使用 TensorRT
-TensorRT 不可用 → 回退到 ONNX Runtime CUDA
-CUDA 不可用 → 回退到 CPU (ONNX Runtime)
+TensorRT 不可用 → 回退到 OpenVINO
+CUDA 不可用 → 回退到 CPU (OpenVINO)
 ```
 
 ## 常見問題

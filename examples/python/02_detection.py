@@ -3,7 +3,7 @@
 iVIT-SDK Detection Demo
 
 Demonstrates object detection using the iVIT-SDK Python bindings.
-Supports multiple backends (TensorRT, OpenVINO, ONNX Runtime).
+Supports multiple backends (TensorRT, OpenVINO).
 
 Usage:
     # Run from project root

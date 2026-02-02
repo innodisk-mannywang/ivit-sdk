@@ -67,8 +67,7 @@ rm -rf build && mkdir build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DIVIT_USE_OPENVINO=OFF \
-    -DIVIT_USE_TENSORRT=OFF \
-    -DIVIT_USE_ONNXRUNTIME=OFF
+    -DIVIT_USE_TENSORRT=OFF
 
 make -j$(nproc)
 
@@ -140,8 +139,7 @@ rm -rf build && mkdir build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DIVIT_USE_OPENVINO=ON \
-    -DIVIT_USE_TENSORRT=OFF \
-    -DIVIT_USE_ONNXRUNTIME=OFF
+    -DIVIT_USE_TENSORRT=OFF
 
 make -j$(nproc)
 ctest -V
@@ -188,8 +186,7 @@ rm -rf build && mkdir build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DIVIT_USE_OPENVINO=OFF \
-    -DIVIT_USE_TENSORRT=ON \
-    -DIVIT_USE_ONNXRUNTIME=OFF
+    -DIVIT_USE_TENSORRT=ON
 
 make -j$(nproc)
 ctest -V
@@ -204,8 +201,7 @@ cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DIVIT_BUNDLE_DEPS=ON \
     -DIVIT_USE_OPENVINO=ON \
-    -DIVIT_USE_TENSORRT=ON \
-    -DIVIT_USE_ONNXRUNTIME=ON
+    -DIVIT_USE_TENSORRT=ON
 ```
 
 ## 預期結果

@@ -111,8 +111,8 @@ def load_model(
             - "auto": 根據設備自動選擇
             - "openvino": Intel OpenVINO
             - "tensorrt": NVIDIA TensorRT
-            - "snpe": Qualcomm SNPE
-            - "onnx": ONNX Runtime (fallback)
+            - "qnn": Qualcomm QNN (規劃中)
+            - "onnx": ONNX format (loaded via OpenVINO or TensorRT)
         task: 任務類型提示。選項:
             - "classification"
             - "detection"
@@ -2152,11 +2152,9 @@ System:
 Backends:
   OpenVINO:       2024.0.0
   TensorRT:       8.6.1
-  ONNX Runtime:   1.16.0
-    Providers:    CUDAExecutionProvider, CPUExecutionProvider
 
 Devices:
-  [cpu] Intel Core i7-12700 (onnxruntime)
+  [cpu] Intel Core i7-12700 (openvino)
   [cuda:0] NVIDIA GeForce RTX 3080 (tensorrt)
 
 ============================================================

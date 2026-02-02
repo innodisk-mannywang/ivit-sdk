@@ -9,6 +9,9 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <cstdio>
+#include <unistd.h>
+#include <fcntl.h>
 
 namespace ivit {
 
@@ -24,6 +27,9 @@ OpenVINORuntime::~OpenVINORuntime() = default;
 
 void OpenVINORuntime::initialize() {
     if (initialized_) return;
+
+    // Suppress internal OpenCL compiler warnings (e.g. "Failed to read file: /tmp/dep-*.d")
+    core_.set_property(ov::log::level(ov::log::Level::ERR));
 
     // Enable model caching if cache directory is set
     if (!cache_dir_.empty()) {
@@ -50,8 +56,20 @@ std::vector<DeviceInfo> OpenVINORuntime::get_devices() const {
     std::vector<DeviceInfo> devices;
 
     try {
+        // Suppress stderr noise from Intel OpenCL compiler (IGC) during device enumeration
+        fflush(stderr);
+        int saved_stderr = dup(STDERR_FILENO);
+        int devnull = open("/dev/null", O_WRONLY);
+        dup2(devnull, STDERR_FILENO);
+        close(devnull);
+
         ov::Core core;
         auto available = core.get_available_devices();
+
+        // Restore stderr
+        fflush(stderr);
+        dup2(saved_stderr, STDERR_FILENO);
+        close(saved_stderr);
 
         for (const auto& device_name : available) {
             DeviceInfo info;

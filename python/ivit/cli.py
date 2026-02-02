@@ -62,20 +62,12 @@ def cmd_info(args):
     except ImportError:
         print("  TensorRT:       Not installed")
 
-    try:
-        import onnxruntime
-        providers = onnxruntime.get_available_providers()
-        print(f"  ONNX Runtime:   {onnxruntime.__version__}")
-        print(f"    Providers:    {', '.join(providers)}")
-    except ImportError:
-        print("  ONNX Runtime:   Not installed")
-
     print()
 
     # Devices summary
     print("Devices:")
-    devices = ivit.devices()
-    for d in devices:
+    device_list = ivit.list_devices()
+    for d in device_list:
         print(f"  [{d.id}] {d.name} ({d.backend})")
 
     print()
@@ -86,7 +78,7 @@ def cmd_devices(args):
     """List available inference devices."""
     import ivit
 
-    devices = ivit.devices()
+    device_list = ivit.list_devices()
 
     if args.json:
         import json
@@ -98,7 +90,7 @@ def cmd_devices(args):
                 "backend": d.backend,
                 "available": d.available,
             }
-            for d in devices
+            for d in device_list
         ]
         print(json.dumps(data, indent=2))
         return
@@ -109,12 +101,12 @@ def cmd_devices(args):
     print(f"{'ID':<12} {'Name':<30} {'Backend':<12} {'Type':<8}")
     print("-" * 60)
 
-    for d in devices:
+    for d in device_list:
         status = "OK" if d.available else "N/A"
         print(f"{d.id:<12} {d.name[:28]:<30} {d.backend:<12} {d.type:<8}")
 
     print("-" * 60)
-    print(f"Total: {len(devices)} device(s)")
+    print(f"Total: {len(device_list)} device(s)")
     print()
 
     # Show best device

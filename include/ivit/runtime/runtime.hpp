@@ -31,7 +31,7 @@ struct RuntimeConfig {
 /**
  * @brief Abstract runtime interface
  *
- * All backend runtimes (OpenVINO, TensorRT, SNPE) implement this interface.
+ * All backend runtimes (OpenVINO, TensorRT, QNN) implement this interface.
  */
 class IRuntime {
 public:

@@ -6,7 +6,7 @@ Target: Embedded engineers who need to optimize inference performance
         on edge devices.
 
 Features demonstrated:
-- Runtime configuration (OpenVINO, TensorRT, ONNX Runtime)
+- Runtime configuration (OpenVINO, TensorRT)
 - Custom pre/post processors
 - Performance benchmarking
 - Model warmup
@@ -70,16 +70,6 @@ def configure_runtime(model, backend: str):
         print("  enable_fp16: True")
         print("  builder_optimization_level: 3")
         print("  enable_sparsity: True")
-
-    elif backend == "onnxruntime":
-        # ONNX Runtime optimization
-        print("Configuring ONNX Runtime...")
-        model.configure_onnxruntime(
-            num_threads=4,                   # CPU threads
-            enable_cuda_graph=True,          # CUDA Graph optimization
-        )
-        print("  num_threads: 4")
-        print("  enable_cuda_graph: True")
 
     # [Future] Add new backend configurations here:
     # elif backend == "new_backend":
@@ -401,9 +391,9 @@ def main():
     parser.add_argument(
         "--backend",
         type=str,
-        choices=["openvino", "tensorrt", "onnxruntime"],
-        default="onnxruntime",
-        help="Backend to configure (default: onnxruntime)"
+        choices=["openvino", "tensorrt"],
+        default="tensorrt",
+        help="Backend to configure (default: tensorrt)"
     )
     parser.add_argument(
         "--benchmark",

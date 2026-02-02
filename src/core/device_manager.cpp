@@ -10,7 +10,10 @@
 #include <mutex>
 #include <filesystem>
 #include <cstdlib>
+#include <cstdio>
 #include <iostream>
+#include <unistd.h>
+#include <fcntl.h>
 
 #ifdef IVIT_HAS_OPENVINO
 #include <openvino/openvino.hpp>
@@ -198,14 +201,6 @@ DeviceStatus DeviceManager::get_device_status(const std::string& device_id) {
 #endif
             break;
 
-        case BackendType::ONNXRuntime:
-            // ONNX Runtime CPU is always available
-            status.name = "CPU (ONNX Runtime)";
-            status.is_available = true;
-            status.backend = "onnxruntime";
-            status.supports_fp32 = true;
-            break;
-
         default:
             status.is_available = false;
             break;
@@ -254,10 +249,6 @@ bool DeviceManager::supports_format(
             // TensorRT supports compiled engines and ONNX (for runtime compilation)
             return (fmt == ".engine" || fmt == ".trt" || fmt == ".plan" || fmt == ".onnx");
 
-        case BackendType::ONNXRuntime:
-            // ONNX Runtime supports ONNX format
-            return (fmt == ".onnx");
-
         case BackendType::QNN:
             // QNN supports DLC (legacy SNPE), serialized context, and ONNX
             return (fmt == ".dlc" || fmt == ".serialized" || fmt == ".bin" || fmt == ".onnx");
@@ -295,7 +286,7 @@ void DeviceManager::discover_devices() {
     // discover_xxx_devices();
 
     // ========================================================================
-    // CPU Fallback - Always available via ONNX Runtime
+    // CPU Fallback - Always available via OpenVINO
     // ========================================================================
     // Always add CPU fallback
     bool has_cpu = false;
@@ -310,7 +301,7 @@ void DeviceManager::discover_devices() {
         DeviceInfo cpu;
         cpu.id = "cpu";
         cpu.name = "CPU (Fallback)";
-        cpu.backend = "onnxruntime";
+        cpu.backend = "openvino";
         cpu.type = "cpu";
         cpu.is_available = true;
         cpu.supported_precisions = {Precision::FP32};
@@ -323,8 +314,20 @@ void DeviceManager::discover_devices() {
 void DeviceManager::discover_openvino_devices() {
 #ifdef IVIT_HAS_OPENVINO
     try {
+        // Suppress stderr noise from Intel OpenCL compiler (IGC) during device enumeration
+        fflush(stderr);
+        int saved_stderr = dup(STDERR_FILENO);
+        int devnull = open("/dev/null", O_WRONLY);
+        dup2(devnull, STDERR_FILENO);
+        close(devnull);
+
         ov::Core core;
         auto available = core.get_available_devices();
+
+        // Restore stderr
+        fflush(stderr);
+        dup2(saved_stderr, STDERR_FILENO);
+        close(saved_stderr);
 
         for (const auto& device_name : available) {
             DeviceInfo info;
@@ -471,8 +474,8 @@ std::pair<BackendType, std::string> parse_device_string(const std::string& devic
         return {BackendType::QNN, "HTP"};  // Hexagon Tensor Processor
     }
 
-    // Default to CPU (ONNX Runtime fallback)
-    return {BackendType::ONNXRuntime, "CPU"};
+    // Default to CPU (OpenVINO fallback)
+    return {BackendType::OpenVINO, "CPU"};
 }
 
 BackendType get_backend_for_device(const std::string& device) {
@@ -608,28 +611,6 @@ static void configure_tensorrt_logging([[maybe_unused]] LogLevel level) {
 #endif
 }
 
-static void configure_onnxruntime_logging([[maybe_unused]] LogLevel level) {
-    // ONNX Runtime logging can be configured via environment variable
-    // ORT_LOG_LEVEL: VERBOSE=0, INFO=1, WARNING=2, ERROR=3, FATAL=4
-    switch (level) {
-        case LogLevel::DEBUG:
-            setenv("ORT_LOG_LEVEL", "0", 1);  // VERBOSE
-            break;
-        case LogLevel::INFO:
-            setenv("ORT_LOG_LEVEL", "1", 1);  // INFO
-            break;
-        case LogLevel::WARNING:
-            setenv("ORT_LOG_LEVEL", "2", 1);  // WARNING
-            break;
-        case LogLevel::ERROR:
-            setenv("ORT_LOG_LEVEL", "3", 1);  // ERROR
-            break;
-        case LogLevel::OFF:
-            setenv("ORT_LOG_LEVEL", "4", 1);  // FATAL (effectively off)
-            break;
-    }
-}
-
 void set_log_level(const std::string& level) {
     g_log_level = level;
     LogLevel parsed = parse_log_level(level);
@@ -638,7 +619,6 @@ void set_log_level(const std::string& level) {
     // Configure backend-specific logging
     configure_openvino_logging(parsed);
     configure_tensorrt_logging(parsed);
-    configure_onnxruntime_logging(parsed);
 
     // Log the level change (if not turning off logging)
     if (parsed != LogLevel::OFF && parsed != LogLevel::ERROR) {

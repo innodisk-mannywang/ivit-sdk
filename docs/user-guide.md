@@ -35,7 +35,7 @@
 
 | 特色 | 說明 |
 |------|------|
-| **統一 API** | 無論 Intel、NVIDIA 或 Qualcomm，使用相同的程式碼 |
+| **統一 API** | 無論 Intel 或 NVIDIA，使用相同的程式碼（Qualcomm 規劃中） |
 | **極簡設計** | 類似 Ultralytics 的一行載入、一行推論風格 |
 | **遷移式學習** | 內建訓練模組，支援模型微調 |
 | **多任務支援** | 分類、偵測、分割、姿態估計 |
@@ -47,7 +47,7 @@
 |------|------|----------|:---:|:---:|
 | Intel | CPU / iGPU / NPU / VPU | OpenVINO | ✅ | ✅ |
 | NVIDIA | dGPU / Jetson | TensorRT | ✅ | ✅ |
-| Qualcomm | IQ9/IQ8/IQ6 (Hexagon NPU) | QNN | - | ✅ |
+| Qualcomm | IQ9/IQ8/IQ6 (Hexagon NPU) | QNN (規劃中) | - | ✅ |
 
 ---
 
@@ -148,7 +148,6 @@ cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DIVIT_USE_OPENVINO=ON \
     -DIVIT_USE_TENSORRT=ON \
-    -DIVIT_USE_ONNXRUNTIME=ON \
     -DIVIT_BUILD_EXAMPLES=ON
 
 # 建置
@@ -164,7 +163,6 @@ sudo make install
 |------|--------|------|
 | `DIVIT_USE_OPENVINO` | OFF | 啟用 Intel OpenVINO 後端 |
 | `DIVIT_USE_TENSORRT` | OFF | 啟用 NVIDIA TensorRT 後端 |
-| `DIVIT_USE_ONNXRUNTIME` | ON | 啟用 ONNX Runtime 後端 |
 | `DIVIT_USE_QNN` | OFF | 啟用 Qualcomm QNN 後端 (IQ Series) |
 | `DIVIT_BUILD_EXAMPLES` | ON | 建置範例程式 |
 | `DIVIT_BUILD_TESTS` | OFF | 建置測試程式 |
@@ -215,7 +213,7 @@ iVIT-SDK 版本: 1.0.0
 ├─────────────────────────────────────────────────────────┤
 │  ID       │ Name                    │ Backend          │
 ├─────────────────────────────────────────────────────────┤
-│  cpu      │ Intel(R) Xeon(R)        │ onnxruntime      │
+│  cpu      │ Intel(R) Xeon(R)        │ openvino         │
 │  cuda:0   │ NVIDIA RTX 6000 Ada     │ tensorrt         │
 │  cuda:1   │ NVIDIA RTX 6000 Ada     │ tensorrt         │
 ╰─────────────────────────────────────────────────────────╯
@@ -254,7 +252,7 @@ cd build
 ```
 iVIT-SDK Version: 1.0.0
 Available devices: 3
-  - cpu: Intel(R) Xeon(R) (onnxruntime)
+  - cpu: Intel(R) Xeon(R) (openvino)
   - cuda:0: NVIDIA RTX 6000 Ada (tensorrt)
   - cuda:1: NVIDIA RTX 6000 Ada (tensorrt)
 ```
@@ -854,13 +852,7 @@ model.configure_tensorrt(
     enable_sparsity=True,            # 稀疏加速
 )
 
-# --- ONNX Runtime 配置 ---
-model.configure_onnxruntime(
-    num_threads=4,                   # CPU 執行緒數
-    enable_cuda_graph=True,          # CUDA Graph 優化
-)
-
-# --- QNN 配置（Qualcomm IQ Series 硬體）---
+# --- QNN 配置（Qualcomm IQ Series 硬體）--- (規劃中，尚未提供)
 model.configure_qnn(
     backend="htp",                   # cpu, gpu, htp (Hexagon Tensor Processor)
     performance_profile="HIGH_PERFORMANCE",
@@ -1774,8 +1766,7 @@ results = model.predict_tta(image, scales=[0.8, 1.0, 1.2])
 # 配置
 model.configure_openvino(...)
 model.configure_tensorrt(...)
-model.configure_onnxruntime(...)
-model.configure_qnn(...)  # Qualcomm IQ Series
+model.configure_qnn(...)  # Qualcomm IQ Series (規劃中)
 
 # 前後處理
 model.set_preprocessor(preprocessor)

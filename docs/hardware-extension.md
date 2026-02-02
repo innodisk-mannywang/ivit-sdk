@@ -118,7 +118,7 @@ def get_backend_for_device(device: str) -> str:
             return "xxx"
 
     # Fallback
-    return "onnxruntime"
+    return "openvino"
 ```
 
 ### C++ (`src/core/device_manager.cpp`)
@@ -219,7 +219,7 @@ endif()
 ### 單元測試
 
 ```python
-# tests/python/test_xxx_backend.py
+# tests/integration/test_xxx_backend.py
 import pytest
 import ivit
 
@@ -258,10 +258,9 @@ class TestXXXBackend:
 |------|---------|------|------|
 | Intel CPU/iGPU/NPU/VPU | `cpu`, `gpu:0`, `npu`, `vpu` | OpenVINO | ✅ |
 | NVIDIA GPU | `cuda:0`, `cuda:1`, ... | TensorRT | ✅ |
-| CPU Fallback | `cpu` | ONNX Runtime | ✅ |
+| CPU Fallback | `cpu` | OpenVINO | ✅ |
 
 ## 參考資源
 
 - [OpenVINO Runtime 實作](../src/runtime/openvino_runtime.cpp)
 - [TensorRT Runtime 實作](../src/runtime/tensorrt_runtime.cpp)
-- [ONNX Runtime 實作](../src/runtime/onnx_runtime.cpp)

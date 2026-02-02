@@ -45,20 +45,6 @@ struct TensorRTConfig {
 };
 
 /**
- * @brief ONNX Runtime configuration
- */
-struct ONNXRuntimeConfig {
-    std::string execution_provider = "CPUExecutionProvider"; ///< EP name
-    int intra_op_num_threads = 0;   ///< Threads within an op (0 = auto)
-    int inter_op_num_threads = 0;   ///< Threads between ops (0 = auto)
-    std::string graph_optimization_level = "ORT_ENABLE_ALL"; ///< Optimization level
-    bool enable_mem_pattern = true;  ///< Enable memory pattern optimization
-    bool enable_cpu_mem_arena = true; ///< Enable CPU memory arena
-    std::string session_log_severity = "1"; ///< Log severity level
-    std::map<std::string, std::string> provider_options; ///< EP-specific options
-};
-
-/**
  * @brief Qualcomm QNN runtime configuration
  */
 struct QNNConfig {

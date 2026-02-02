@@ -33,22 +33,24 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是宜鼎國際為其 AI 運算�
 
 ```
 ivit-sdk/
-├── include/ivit/           # C++ 公開標頭
-├── src/                    # C++ 實作
-│   ├── core/               # 核心引擎
-│   ├── runtime/            # 後端適配器 (OpenVINO, TensorRT, 可擴展)
-│   ├── vision/             # 視覺任務
-│   └── train/              # 訓練功能
-├── python/ivit/            # Python 綁定
-├── models/                 # Model Zoo
-├── tests/                  # 測試程式碼
-├── examples/               # 範例程式
+├── CMakeLists.txt             # 頂層 CMake 設定
+├── pyproject.toml             # Python 專案設定
+├── include/ivit/              # C++ 公開標頭
+├── src/                       # C++ 實作
+│   ├── core/                  # 核心引擎
+│   ├── runtime/               # 後端適配器 (openvino_runtime.cpp, tensorrt_runtime.cpp 等)
+│   └── vision/                # 視覺任務
+├── python/ivit/               # Python 綁定
+├── models/                    # Model Zoo
+├── tests/                     # 測試程式碼
+├── examples/                  # 範例程式
 ├── docs/
-│   ├── PRD/                # 產品需求文件
-│   ├── architecture/       # 架構文件 (ADR 格式)
-│   ├── api/                # API 規格文件
-│   └── tutorials/          # 教學文件
-└── .claude/skills/         # 團隊角色技能定義
+│   ├── development/           # 產品需求文件 (prd.md)
+│   ├── architecture/          # 架構文件 (ADR 格式)
+│   ├── api/                   # API 規格文件
+│   ├── deployment/            # 部署指南
+│   └── tutorials/             # 教學文件
+└── .claude/skills/            # 團隊角色技能定義
 ```
 
 ## 開發指令
@@ -63,11 +65,11 @@ make -j$(nproc)
 pip install -e .
 
 # 測試
-pytest tests/python/
+pytest tests/integration/
 ctest --test-dir build
 
 # 執行單一測試
-pytest tests/python/test_detector.py -v
+pytest tests/integration/test_user_scenarios.py -v
 
 # Lint
 flake8 python/
@@ -81,7 +83,7 @@ clang-format -i src/**/*.cpp include/**/*.hpp
 - **技術堆疊**：
   - 語言：C++ 17、Python 3.9+
   - 綁定：pybind11
-  - 後端：OpenVINO、TensorRT、ONNX Runtime（可擴展架構）
+  - 後端：OpenVINO、TensorRT（可擴展架構）
   - 建置：CMake、scikit-build
   - 測試：pytest、Google Test
 
@@ -119,7 +121,7 @@ clang-format -i src/**/*.cpp include/**/*.hpp
 - Code Review：必要
 
 ### 文件
-- 需求文件：PRD 格式 (`docs/PRD/`)
+- 需求文件：PRD 格式 (`docs/development/prd.md`)
 - 架構文件：ADR (Architecture Decision Records) (`docs/architecture/`)
 - API 文件：`docs/api/`
 

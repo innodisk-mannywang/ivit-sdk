@@ -234,7 +234,7 @@ class DeviceManager:
                 id="cpu",
                 name=platform.processor() or "CPU",
                 type="cpu",
-                backend="onnxruntime",
+                backend="openvino",
                 vendor=vendor,
                 available=True,
             ))
@@ -257,7 +257,7 @@ class DeviceManager:
             id="cpu",
             name="CPU",
             type="cpu",
-            backend="onnxruntime",
+            backend="openvino",
             available=True,
         )
 

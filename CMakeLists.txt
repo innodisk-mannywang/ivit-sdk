@@ -10,7 +10,6 @@ option(IVIT_BUILD_EXAMPLES "Build examples" ON)
 option(IVIT_USE_OPENVINO "Enable OpenVINO backend" ON)
 option(IVIT_USE_TENSORRT "Enable TensorRT backend" ON)
 option(IVIT_USE_QNN "Enable QNN backend (Qualcomm IQ Series)" OFF)
-option(IVIT_USE_ONNXRUNTIME "Enable ONNX Runtime backend" ON)
 
 # 依賴打包選項
 option(IVIT_BUNDLE_DEPS "Bundle dependencies into SDK for redistribution" OFF)
@@ -35,7 +34,7 @@ if(IVIT_BUNDLE_DEPS)
     set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
     # Build 時也使用相對路徑
-    set(CMAKE_BUILD_RPATH "$ORIGIN;${CMAKE_BINARY_DIR}/lib;${IVIT_DEPS_DIR}/install/onnxruntime/lib;${IVIT_DEPS_DIR}/install/runtime/lib/intel64;${IVIT_DEPS_DIR}/install/tensorrt/lib")
+    set(CMAKE_BUILD_RPATH "$ORIGIN;${CMAKE_BINARY_DIR}/lib;${IVIT_DEPS_DIR}/install/runtime/lib/intel64;${IVIT_DEPS_DIR}/install/tensorrt/lib")
 
     message(STATUS "Bundle mode enabled - dependencies will be packaged with SDK")
 endif()
@@ -136,48 +135,6 @@ if(IVIT_USE_TENSORRT)
 endif()
 
 # ============================================================================
-# ONNX Runtime
-# ============================================================================
-if(IVIT_USE_ONNXRUNTIME)
-    # 優先使用打包的 ONNX Runtime
-    if(IVIT_BUNDLE_DEPS AND EXISTS "${IVIT_DEPS_DIR}/install/onnxruntime")
-        set(ONNXRUNTIME_ROOT "${IVIT_DEPS_DIR}/install/onnxruntime")
-        message(STATUS "Using bundled ONNX Runtime from: ${ONNXRUNTIME_ROOT}")
-    endif()
-
-    # 嘗試透過 CMake 找
-    find_package(onnxruntime QUIET)
-
-    if(onnxruntime_FOUND)
-        message(STATUS "ONNX Runtime found (CMake)")
-        add_compile_definitions(IVIT_HAS_ONNXRUNTIME)
-    else()
-        # 手動尋找
-        find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
-            HINTS ${ONNXRUNTIME_ROOT} /usr/local /usr
-            PATH_SUFFIXES include onnxruntime/include)
-        find_library(ONNXRUNTIME_LIBRARY onnxruntime
-            HINTS ${ONNXRUNTIME_ROOT} /usr/local /usr
-            PATH_SUFFIXES lib lib64)
-
-        if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIBRARY)
-            message(STATUS "ONNX Runtime found: ${ONNXRUNTIME_LIBRARY}")
-            add_compile_definitions(IVIT_HAS_ONNXRUNTIME)
-
-            # 收集需要打包的庫
-            if(IVIT_BUNDLE_DEPS)
-                get_filename_component(ORT_LIB_DIR ${ONNXRUNTIME_LIBRARY} DIRECTORY)
-                file(GLOB ORT_LIBS "${ORT_LIB_DIR}/libonnxruntime*.so*")
-                list(APPEND IVIT_BUNDLE_LIBRARIES ${ORT_LIBS})
-            endif()
-        else()
-            message(WARNING "ONNX Runtime not found, disabling ONNX Runtime backend")
-            set(IVIT_USE_ONNXRUNTIME OFF)
-        endif()
-    endif()
-endif()
-
-# ============================================================================
 # Library sources
 # ============================================================================
 set(IVIT_SOURCES
@@ -212,9 +169,6 @@ if(IVIT_USE_TENSORRT)
     list(APPEND IVIT_SOURCES src/runtime/tensorrt_runtime.cpp)
 endif()
 
-if(IVIT_USE_ONNXRUNTIME)
-    list(APPEND IVIT_SOURCES src/runtime/onnx_runtime.cpp)
-endif()
 
 # ============================================================================
 # Create library
@@ -248,14 +202,6 @@ if(IVIT_USE_TENSORRT)
     )
 endif()
 
-if(IVIT_USE_ONNXRUNTIME)
-    if(onnxruntime_FOUND)
-        target_link_libraries(ivit PRIVATE onnxruntime::onnxruntime)
-    else()
-        target_include_directories(ivit PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
-        target_link_libraries(ivit PRIVATE ${ONNXRUNTIME_LIBRARY})
-    endif()
-endif()
 
 # ============================================================================
 # Python bindings
@@ -276,9 +222,15 @@ if(IVIT_BUILD_PYTHON)
     pybind11_add_module(_ivit_core python/ivit/_binding.cpp)
     target_link_libraries(_ivit_core PRIVATE ivit)
 
-    set_target_properties(_ivit_core PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/ivit
-    )
+    if(SKBUILD)
+        # scikit-build-core controls the output directory
+        install(TARGETS _ivit_core LIBRARY DESTINATION .)
+        install(TARGETS ivit LIBRARY DESTINATION .)
+    else()
+        set_target_properties(_ivit_core PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/ivit
+        )
+    endif()
 endif()
 
 # ============================================================================
@@ -436,7 +388,6 @@ message(STATUS "Backends:")
 message(STATUS "  OpenVINO:       ${IVIT_USE_OPENVINO}")
 message(STATUS "  TensorRT:       ${IVIT_USE_TENSORRT}")
 message(STATUS "  QNN:            ${IVIT_USE_QNN}")
-message(STATUS "  ONNX Runtime:   ${IVIT_USE_ONNXRUNTIME}")
 message(STATUS "")
 message(STATUS "Components:")
 message(STATUS "  Python:         ${IVIT_BUILD_PYTHON}")

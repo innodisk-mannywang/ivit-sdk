@@ -75,7 +75,7 @@ try:
         # Runtime config
         OpenVINOConfig,
         TensorRTConfig,
-        ONNXRuntimeConfig,
+
         QNNConfig,
 
         # Stream
@@ -205,7 +205,7 @@ __all__ = [
     "InferConfig",
     "OpenVINOConfig",
     "TensorRTConfig",
-    "ONNXRuntimeConfig",
+
     "QNNConfig",
 
     # Data structures

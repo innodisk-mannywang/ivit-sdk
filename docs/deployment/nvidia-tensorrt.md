@@ -57,7 +57,6 @@ Python: 3.10.12
 
 Available Backends:
   - TensorRT 8.6.1 ✓
-  - ONNX Runtime GPU 1.16.0 ✓
 
 Devices:
   - cuda:0: NVIDIA GeForce RTX 4090 (TensorRT)
@@ -185,11 +184,6 @@ import ivit
 
 model = ivit.load("model.engine", device="cuda:0")
 
-# 開啟 CUDA Graph（減少 kernel 啟動開銷）
-model.configure_onnxruntime(
-    enable_cuda_graph=True,
-)
-
 # 處理影片串流
 for results in model.stream("rtsp://camera/stream"):
     frame = results.plot()
@@ -316,14 +310,11 @@ model.configure_tensorrt(
     enable_fp16=True,
     builder_optimization_level=5,
 )
-model.configure_onnxruntime(
-    enable_cuda_graph=True,
-)
 ```
 
 ## 範例程式
 
-完整範例程式位於：`examples/python/tensorrt_demo.py`
+完整範例程式位於：`examples/python/02_detection.py` 及 `examples/python/advanced/embedded_optimization.py`
 
 ```python
 #!/usr/bin/env python3

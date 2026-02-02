@@ -27,7 +27,6 @@ class BackendType(Enum):
     """
     OPENVINO = "openvino"      # Intel: CPU, iGPU, NPU, VPU
     TENSORRT = "tensorrt"      # NVIDIA: CUDA GPUs, Jetson
-    ONNXRUNTIME = "onnxruntime"  # Cross-platform fallback
     AUTO = "auto"              # Automatic selection
     # [Future] Add new backends here:
     # XXX = "xxx"

@@ -128,7 +128,7 @@ private:
  * @brief Parse device string to backend and device index
  *
  * Examples:
- *   "cpu" -> (OpenVINO or ONNX, CPU)
+ *   "cpu" -> (OpenVINO, CPU)
  *   "gpu:0" -> (OpenVINO, GPU.0)
  *   "cuda:0" -> (TensorRT, 0)
  *   "npu" -> (OpenVINO, NPU)

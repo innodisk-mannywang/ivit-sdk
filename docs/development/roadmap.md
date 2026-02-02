@@ -157,22 +157,15 @@ model.configure_tensorrt(
     builder_optimization_level=3,
 )
 
-# ONNX Runtime 設定
-model.configure_onnxruntime(
-    num_threads=8,
-    enable_cuda_graph=True,
-)
-
 # 支援 method chaining
-model.configure_onnxruntime(num_threads=4).warmup(3)
+model.configure_tensorrt(workspace_size=1 << 30).warmup(3)
 ```
 
 **已實作**：
 - [x] `configure_openvino()` 方法
 - [x] `configure_tensorrt()` 方法
-- [x] `configure_onnxruntime()` 方法
-- [x] `configure_snpe()` 方法
-- [x] 配置類別：`OpenVINOConfig`, `TensorRTConfig`, `ONNXRuntimeConfig`, `SNPEConfig`
+- [x] `configure_snpe()` 方法（規劃中 - QNN/SNPE 後端尚未實作）
+- [x] 配置類別：`OpenVINOConfig`, `TensorRTConfig`, `SNPEConfig`（SNPEConfig 為規劃中）
 
 #### 2.3 底層存取（L5）✅
 
@@ -181,11 +174,10 @@ model.configure_onnxruntime(num_threads=4).warmup(3)
 ```python
 # 存取 runtime
 runtime = model.runtime
-print(runtime.name)  # "onnxruntime"
+print(runtime.name)  # "openvino" or "tensorrt"
 
 # 存取底層 handle
 handle = model.runtime_handle
-session = handle.session  # ONNX InferenceSession
 
 # 原始推論（無前後處理）
 input_name = model.input_info[0]["name"]

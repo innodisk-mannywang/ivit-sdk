@@ -124,15 +124,15 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          Backend Adapter Layer                               │
 │                                                                              │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐│
-│  │   OpenVINO    │  │   TensorRT    │  │     SNPE      │  │     ONNX      ││
-│  │    Adapter    │  │    Adapter    │  │    Adapter    │  │    Runtime    ││
-│  │               │  │               │  │               │  │    Adapter    ││
-│  │ ┌───────────┐ │  │ ┌───────────┐ │  │ ┌───────────┐ │  │ ┌───────────┐ ││
-│  │ │   Intel   │ │  │ │  NVIDIA   │ │  │ │ Qualcomm  │ │  │ │  Fallback │ ││
-│  │ │CPU/GPU/NPU│ │  │ │ GPU/Jetson│ │  │ │  Hexagon  │ │  │ │  (CPU)    │ ││
-│  │ └───────────┘ │  │ └───────────┘ │  │ └───────────┘ │  │ └───────────┘ ││
-│  └───────────────┘  └───────────────┘  └───────────────┘  └───────────────┘│
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐                  │
+│  │   OpenVINO    │  │   TensorRT    │  │ SNPE/QNN      │                  │
+│  │    Adapter    │  │    Adapter    │  │   Adapter     │                  │
+│  │               │  │               │  │  (Planned)    │                  │
+│  │ ┌───────────┐ │  │ ┌───────────┐ │  │ ┌───────────┐ │                  │
+│  │ │   Intel   │ │  │ │  NVIDIA   │ │  │ │ Qualcomm  │ │                  │
+│  │ │CPU/GPU/NPU│ │  │ │ GPU/Jetson│ │  │ │  Hexagon  │ │                  │
+│  │ └───────────┘ │  │ └───────────┘ │  │ └───────────┘ │                  │
+│  └───────────────┘  └───────────────┘  └───────────────┘                  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -159,7 +159,7 @@
 | **API Layer** | 使用者介面，提供易用的 API | load_model, predict, train |
 | **Core Engine** | 核心業務邏輯，任務無關 | Model Manager, Inference Engine |
 | **Runtime Abstraction** | 統一運行時介面 | IRuntime interface |
-| **Backend Adapter** | 硬體後端適配 | OpenVINO, TensorRT, SNPE adapters |
+| **Backend Adapter** | 硬體後端適配 | OpenVINO, TensorRT, SNPE/QNN (規劃中) adapters |
 | **Hardware** | 實際硬體設備 | Intel/NVIDIA/Qualcomm 硬體 |
 
 ---
@@ -403,11 +403,12 @@ struct InferConfig {
          │                  │                  │
          ▼                  ▼                  ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ OpenVINORuntime │ │ TensorRTRuntime │ │   SNPERuntime   │
+│ OpenVINORuntime │ │ TensorRTRuntime │ │  QNNRuntime     │
+│                 │ │                 │ │   (Planned)     │
 ├─────────────────┤ ├─────────────────┤ ├─────────────────┤
-│ - Core          │ │ - Builder       │ │ - SNPE Handle   │
-│ - CompiledModel │ │ - Runtime       │ │ - DLC Model     │
-│ - InferRequest  │ │ - Context       │ │ - UserBufferMap │
+│ - Core          │ │ - Builder       │ │ - QNN Context   │
+│ - CompiledModel │ │ - Runtime       │ │ - QNN Graph     │
+│ - InferRequest  │ │ - Context       │ │ - QNN Tensor    │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
@@ -788,66 +789,35 @@ struct DeviceStatus {
 ```
 ivit-sdk/
 ├── CMakeLists.txt                    # 頂層 CMake 設定
-├── setup.py                          # Python 套件設定
 ├── pyproject.toml                    # Python 專案設定
 ├── README.md                         # 專案說明
-├── CHANGELOG.md                      # 變更日誌
 ├── LICENSE                           # 授權
 │
 ├── include/                          # C++ 公開標頭
 │   └── ivit/
 │       ├── ivit.hpp                  # 主標頭
 │       ├── core/
+│       │   ├── common.hpp
 │       │   ├── model.hpp
-│       │   ├── inference.hpp
-│       │   ├── result.hpp
-│       │   └── device.hpp
-│       ├── vision/
-│       │   ├── classifier.hpp
-│       │   ├── detector.hpp
-│       │   ├── segmentor.hpp
-│       │   └── pose_estimator.hpp
-│       ├── train/
-│       │   ├── trainer.hpp
-│       │   ├── dataset.hpp
-│       │   └── augmentation.hpp
+│       │   ├── device.hpp
+│       │   └── runtime_config.hpp
+│       ├── runtime/
+│       │   ├── tensorrt_runtime.hpp
+│       │   └── ...
 │       └── utils/
-│           ├── visualizer.hpp
-│           ├── profiler.hpp
-│           └── video_stream.hpp
+│           └── ...
 │
 ├── src/                              # C++ 實作
 │   ├── core/
-│   │   ├── model_manager.cpp
-│   │   ├── inference_engine.cpp
-│   │   ├── device_manager.cpp
-│   │   └── result.cpp
+│   │   ├── model.cpp
+│   │   └── device_manager.cpp
 │   ├── runtime/
 │   │   ├── runtime_factory.cpp
-│   │   ├── openvino/
-│   │   │   ├── openvino_runtime.cpp
-│   │   │   └── openvino_model.cpp
-│   │   ├── tensorrt/
-│   │   │   ├── tensorrt_runtime.cpp
-│   │   │   └── tensorrt_model.cpp
-│   │   └── snpe/
-│   │       ├── snpe_runtime.cpp
-│   │       └── snpe_model.cpp
-│   ├── vision/
-│   │   ├── classifier.cpp
-│   │   ├── detector.cpp
-│   │   ├── segmentor.cpp
-│   │   └── post_process/
-│   │       ├── nms.cpp
-│   │       └── decode.cpp
-│   ├── train/
-│   │   ├── trainer.cpp
-│   │   ├── dataset.cpp
-│   │   └── augmentation.cpp
+│   │   ├── runtime_init.cpp
+│   │   ├── openvino_runtime.cpp
+│   │   └── tensorrt_runtime.cpp
 │   └── utils/
-│       ├── visualizer.cpp
-│       ├── profiler.cpp
-│       └── image_utils.cpp
+│       └── ...
 │
 ├── python/                           # Python 綁定
 │   └── ivit/
@@ -855,67 +825,48 @@ ivit-sdk/
 │       ├── _binding.cpp              # pybind11 綁定
 │       ├── core/
 │       │   ├── __init__.py
-│       │   ├── model.py
-│       │   └── device.py
-│       ├── vision/
+│       │   ├── device.py
+│       │   ├── exceptions.py
+│       │   ├── runtime_config.py
+│       │   └── types.py
+│       ├── runtime/
 │       │   ├── __init__.py
-│       │   ├── classifier.py
-│       │   ├── detector.py
-│       │   └── segmentor.py
-│       ├── train/
-│       │   ├── __init__.py
-│       │   ├── trainer.py
-│       │   └── dataset.py
-│       └── utils/
-│           ├── __init__.py
-│           ├── visualizer.py
-│           └── video.py
+│       │   └── base.py
+│       ├── devices.py
+│       └── cli.py
 │
 ├── models/                           # Model Zoo
-│   ├── registry.json                 # 模型註冊表
-│   └── configs/                      # 模型設定
-│       ├── classification/
-│       ├── detection/
-│       └── segmentation/
+│   └── ...
 │
 ├── tests/                            # 測試
-│   ├── cpp/                          # C++ 測試
-│   │   ├── test_model_manager.cpp
-│   │   ├── test_inference.cpp
-│   │   └── test_backends.cpp
-│   └── python/                       # Python 測試
-│       ├── test_api.py
-│       ├── test_classifier.py
-│       ├── test_detector.py
-│       └── test_training.py
+│   └── integration/
+│       └── test_user_scenarios.py
 │
 ├── examples/                         # 範例
 │   ├── cpp/
-│   │   ├── classification_demo.cpp
-│   │   ├── detection_demo.cpp
-│   │   └── video_demo.cpp
+│   │   └── ...
 │   └── python/
-│       ├── 01_quick_start.py
+│       ├── 01_quickstart.py
+│       ├── 02_detection.py
 │       ├── 02_classification.py
-│       ├── 03_object_detection.py
-│       ├── 04_segmentation.py
-│       ├── 05_training.py
-│       └── 06_deployment.py
+│       └── advanced/
+│           ├── si_quickstart.py
+│           ├── embedded_optimization.py
+│           └── ...
 │
 ├── docs/                             # 文件
-│   ├── PRD/                          # 產品需求文件
+│   ├── development/                  # 開發文件 (PRD, roadmap)
 │   ├── architecture/                 # 架構文件
 │   ├── api/                          # API 文件
+│   ├── deployment/                   # 部署指南
 │   └── tutorials/                    # 教學
 │
 ├── scripts/                          # 工具腳本
-│   ├── build.sh
-│   ├── download_models.py
-│   └── benchmark.py
+│   └── download_deps.sh
 │
 └── docker/                           # Docker
-    ├── Dockerfile.ubuntu
-    ├── Dockerfile.jetson
+    ├── Dockerfile.verify
+    ├── Dockerfile.full
     └── docker-compose.yml
 ```
 
@@ -936,7 +887,7 @@ ivit-sdk/
 **理由**:
 - ONNX 是業界標準，主流框架都支援匯出
 - OpenVINO、TensorRT、SNPE 都支援從 ONNX 轉換
-- ONNX Runtime 可作為 fallback 後端
+- OpenVINO 可作為 fallback 後端 (CPU)
 - 社群活躍，工具鏈完善
 
 **後果**:
@@ -996,11 +947,11 @@ elif Intel GPU available:
 elif Intel NPU available:
     backend = OpenVINO
     device = NPU
-elif Qualcomm NPU available:
-    backend = SNPE
+elif Qualcomm NPU available:  # (Planned)
+    backend = SNPE/QNN
     device = DSP
 else:
-    backend = OpenVINO (or ONNX Runtime)
+    backend = OpenVINO
     device = CPU
 ```
 
@@ -1390,7 +1341,7 @@ print(f"Peak memory: {stats.peak_memory_mb:.2f} MB")
 
 | 術語 | 定義 |
 |------|------|
-| Backend | 底層推論引擎（OpenVINO, TensorRT, SNPE） |
+| Backend | 底層推論引擎（OpenVINO, TensorRT, SNPE/QNN（規劃中）） |
 | Runtime | 模型執行環境 |
 | Engine | TensorRT 編譯後的模型 |
 | IR | OpenVINO 中間表示格式 |
@@ -1402,7 +1353,6 @@ print(f"Peak memory: {stats.peak_memory_mb:.2f} MB")
 - OpenVINO: https://docs.openvino.ai/
 - TensorRT: https://developer.nvidia.com/tensorrt
 - SNPE: https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk
-- ONNX Runtime: https://onnxruntime.ai/
 
 ---
 

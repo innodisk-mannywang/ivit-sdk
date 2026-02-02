@@ -133,7 +133,9 @@ iVIT-SDK (Innodisk Vision & Inference Toolkit) 是宜鼎國際為其 AI 運算�
 - cuDNN >= 8.9
 - JetPack >= 5.1 (Jetson)
 
-#### 3.1.3 Qualcomm 平台
+#### 3.1.3 Qualcomm 平台（規劃中 - 未來里程碑）
+
+> **注意**：Qualcomm 平台支援目前為規劃階段，尚未實作。以下為未來開發計畫。
 
 | 硬體類型 | 產品系列 | 架構 | 推論引擎 | x86-64 | ARM64 | 優先級 |
 |----------|----------|------|----------|--------|-------|--------|
@@ -631,7 +633,7 @@ cv::imwrite("output.jpg", viz);
 
 | 項目 | 內容 | 完成標準 |
 |------|------|----------|
-| Qualcomm 後端 | SNPE/QNN 適配器 | ARM SoC 支援 |
+| Qualcomm 後端（規劃中） | SNPE/QNN 適配器 | ARM SoC 支援 |
 | 任務擴展 | Segmentation + Pose + Face | 功能完成 |
 | 訓練功能 | Classification 遷移式學習 | 訓練 + 匯出 |
 | Model Zoo | 30+ 預訓練模型 | 效能基準 |
@@ -705,7 +707,6 @@ cv::imwrite("output.jpg", viz);
 - [OpenVINO Documentation](https://docs.openvino.ai/)
 - [TensorRT Documentation](https://docs.nvidia.com/deeplearning/tensorrt/)
 - [Qualcomm SNPE Documentation](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk)
-- [ONNX Runtime Documentation](https://onnxruntime.ai/)
 
 ---
 

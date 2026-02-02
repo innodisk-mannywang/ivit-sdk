@@ -35,6 +35,9 @@ private:
  * @brief TensorRT engine wrapper
  */
 struct TensorRTEngine {
+    // Keep a reference to IRuntime so it outlives engine destruction
+    // (prevents static destruction order crash)
+    std::shared_ptr<nvinfer1::IRuntime> runtime;
     std::shared_ptr<nvinfer1::ICudaEngine> engine;
     std::shared_ptr<nvinfer1::IExecutionContext> context;
     std::vector<TensorInfo> input_infos;

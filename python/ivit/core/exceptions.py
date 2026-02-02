@@ -150,7 +150,6 @@ class BackendNotAvailableError(IVITError):
     BACKEND_INSTALL_HINTS = {
         "openvino": "pip install openvino",
         "tensorrt": "請參考 NVIDIA TensorRT 安裝指南",
-        "onnxruntime": "pip install onnxruntime 或 pip install onnxruntime-gpu",
         "snpe": "請參考 Qualcomm SNPE SDK 安裝指南",
     }
 

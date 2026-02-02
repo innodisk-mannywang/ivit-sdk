@@ -126,12 +126,11 @@
 狀態: ✅ 通過
 耗時: 0.0ms
 詳情:
-  可用後端配置: OpenVINO, TensorRT, ONNXRuntime, SNPE
+  可用後端配置: OpenVINO, TensorRT, QNN (規劃中)
   配置詳情:
     OpenVINO: {'performance_mode': 'LATENCY', 'num_streams': 1, 'precision': 'FP16'}
     TensorRT: {'workspace_mb': 256, 'fp16': True, 'dla_core': -1}
-    ONNXRuntime: {'threads': 4, 'cuda_graph': True}
-    SNPE: {'runtime': 'dsp', 'profile': 'HIGH_PERFORMANCE'}
+    QNN (規劃中): {'runtime': 'dsp', 'profile': 'HIGH_PERFORMANCE'}
 
 ──────────────────────────────────────────────────
 👤 嵌入式工程師

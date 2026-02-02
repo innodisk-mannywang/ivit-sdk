@@ -30,8 +30,17 @@ def main():
         print(f"  - {d.id}: {d.name} [{d.backend}]")
 
     # Model and image paths
-    model_path = os.path.join(PROJECT_ROOT, "models", "onnx", "yolov8n.onnx")
-    image_path = os.path.join(PROJECT_ROOT, "examples", "data", "images", "bus.jpg")
+    # NOTE: Update model_path to point to your own ONNX/OpenVINO/TensorRT model file.
+    # You can download a YOLOv8n ONNX model from https://github.com/ultralytics/ultralytics
+    # or use: python -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx')"
+    model_path = os.environ.get(
+        "IVIT_MODEL_PATH",
+        os.path.join(PROJECT_ROOT, "models", "onnx", "yolov8n.onnx"),
+    )
+    image_path = os.environ.get(
+        "IVIT_IMAGE_PATH",
+        os.path.join(PROJECT_ROOT, "examples", "data", "images", "bus.jpg"),
+    )
 
     # Check files exist
     if not os.path.exists(model_path):

@@ -31,7 +31,7 @@ def get_runtime(backend: str):
     Get runtime instance for backend.
 
     Args:
-        backend: Backend name (openvino, tensorrt, snpe, onnxruntime)
+        backend: Backend name (openvino, tensorrt, snpe)
 
     Returns:
         Runtime instance
@@ -56,8 +56,6 @@ def get_runtime(backend: str):
     elif backend == "snpe":
         # Legacy support - redirect to QNN
         runtime = _create_qnn_runtime()
-    elif backend in ("onnxruntime", "onnx"):
-        runtime = _create_onnxruntime()
     else:
         raise ValueError(f"Unknown backend: {backend}")
 
@@ -102,16 +100,6 @@ def _create_qnn_runtime():
 _create_snpe_runtime = _create_qnn_runtime
 
 
-def _create_onnxruntime():
-    """Create ONNX Runtime."""
-    try:
-        from .onnx_runtime import ONNXRuntime
-        return ONNXRuntime()
-    except ImportError as e:
-        logger.warning(f"ONNX Runtime not available: {e}")
-        return None
-
-
 def list_available_backends():
     """List available backends."""
     available = []
@@ -125,12 +113,6 @@ def list_available_backends():
     try:
         import tensorrt
         available.append("tensorrt")
-    except ImportError:
-        pass
-
-    try:
-        import onnxruntime
-        available.append("onnxruntime")
     except ImportError:
         pass
 

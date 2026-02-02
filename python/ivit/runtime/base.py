@@ -101,7 +101,7 @@ class BaseRuntime(ABC):
     """
     Abstract base class for runtime backends.
 
-    All runtime implementations (OpenVINO, TensorRT, SNPE, ONNXRuntime)
+    All runtime implementations (OpenVINO, TensorRT, QNN)
     should inherit from this class to ensure a consistent interface.
     """
 
@@ -112,7 +112,7 @@ class BaseRuntime(ABC):
         Get runtime name.
 
         Returns:
-            Runtime name (lowercase): "onnxruntime", "openvino", "tensorrt", "snpe"
+            Runtime name (lowercase): "openvino", "tensorrt", "qnn"
         """
         pass
 

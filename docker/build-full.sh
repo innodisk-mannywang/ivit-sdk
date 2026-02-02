@@ -5,7 +5,7 @@ set -e
 
 echo "=============================================="
 echo "  iVIT-SDK Full Build Verification"
-echo "  (OpenVINO + TensorRT + ONNX Runtime)"
+echo "  (OpenVINO + TensorRT)"
 echo "=============================================="
 echo ""
 
@@ -17,7 +17,7 @@ fi
 
 # 載入 OpenVINO 環境
 echo "[0/5] Loading OpenVINO environment..."
-source /opt/intel/openvino/setupvars.sh
+source /opt/intel/openvino_2024/setupvars.sh 2>/dev/null || source /opt/intel/openvino/setupvars.sh
 
 # 複製原始碼
 echo "[1/5] Copying source code..."
@@ -32,8 +32,6 @@ cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DIVIT_USE_OPENVINO=ON \
     -DIVIT_USE_TENSORRT=ON \
-    -DIVIT_USE_ONNXRUNTIME=ON \
-    -DONNXRUNTIME_ROOT=/opt/onnxruntime \
     -DIVIT_BUILD_TESTS=ON \
     -DIVIT_BUILD_EXAMPLES=ON \
     -DIVIT_BUILD_PYTHON=ON

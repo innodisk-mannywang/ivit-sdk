@@ -35,7 +35,7 @@ iVIT Model Zoo 中的模型已經過測試，前後處理器都已正確配置�
 
 | 格式 | 副檔名 | 推論引擎 | 備註 |
 |------|--------|----------|------|
-| ONNX | `.onnx` | ONNX Runtime / OpenVINO / TensorRT | 推薦格式，相容性最高 |
+| ONNX | `.onnx` | OpenVINO / TensorRT | 推薦格式，相容性最高 |
 | OpenVINO IR | `.xml` + `.bin` | OpenVINO | Intel 硬體最佳化 |
 | TensorRT Engine | `.engine` / `.trt` | TensorRT | NVIDIA 硬體最佳化，需相同 GPU 架構 |
 
@@ -610,9 +610,6 @@ torch.onnx.export(
 ```bash
 # 使用 onnx 檢查模型
 python -c "import onnx; onnx.checker.check_model('model.onnx')"
-
-# 使用 onnxruntime 驗證可執行
-python -c "import onnxruntime as ort; ort.InferenceSession('model.onnx')"
 ```
 
 ### 3. 建立測試案例
