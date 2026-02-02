@@ -28,10 +28,11 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 - C++17 標準
 
 ### 依賴項
-- OpenCV 4.5+
-- (可選) OpenVINO 2024.0+
+- OpenCV 4.5+ (`libopencv-dev`)
+- (可選) OpenVINO 2024.0+ (`pip install openvino`)
 - (可選) CUDA 11.8+ 與 TensorRT >= 8.6
 - (可選) Qualcomm AI Engine Direct SDK (QNN)（規劃中）
+- (Python 綁定) python3-dev、pybind11
 
 ---
 
@@ -49,11 +50,12 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 sudo apt update
 sudo apt install build-essential cmake pkg-config libopencv-dev
 
+# Python 綁定需要（若使用 -DIVIT_BUILD_PYTHON=ON）
+sudo apt install python3-dev
+pip install pybind11
+
 # 安裝 OpenVINO（若系統尚未安裝）
 pip install openvino>=2024.0
-
-# (選用) 安裝 pybind11（若需要 Python 綁定）
-pip install pybind11
 ```
 
 #### 編譯步驟
