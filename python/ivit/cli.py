@@ -311,38 +311,82 @@ def cmd_convert(args):
 
 def _convert_to_openvino(input_path: Path, output_dir: Path, precision: str):
     """Convert to OpenVINO IR format."""
-    try:
-        import openvino as ov
-    except ImportError:
-        print("Error: OpenVINO not installed. Install with: pip install openvino")
-        sys.exit(1)
+    import subprocess
+    import shutil
 
-    print("Converting to OpenVINO IR format...")
-
-    # Read model
-    core = ov.Core()
-    model = core.read_model(str(input_path))
-
-    # Output paths
     model_name = input_path.stem
     output_xml = output_dir / f"{model_name}.xml"
     output_bin = output_dir / f"{model_name}.bin"
 
-    # Serialize with FP16 compression if requested
-    if precision.lower() == "fp16":
-        print("  Compressing to FP16...")
-        ov.save_model(model, str(output_xml), compress_to_fp16=True)
-    else:
-        ov.serialize(model, str(output_xml))
+    # Strategy 1: Try C++ binding (works with APT-installed OpenVINO)
+    try:
+        from ivit._ivit_core import convert_model
 
-    print(f"  Created: {output_xml}")
-    print(f"  Created: {output_bin}")
-    print()
-    print("Conversion complete!")
+        print("Converting to OpenVINO IR format...")
+        if precision.lower() == "fp16":
+            print("  Compressing to FP16...")
+
+        convert_model(str(input_path), str(output_xml), "cpu", precision.lower())
+
+        print(f"  Created: {output_xml}")
+        print(f"  Created: {output_bin}")
+        print()
+        print("Conversion complete!")
+        return
+    except ImportError:
+        pass
+
+    # Strategy 2: Try ovc command-line tool (from APT or pip openvino-dev)
+    ovc_path = shutil.which("ovc")
+    if ovc_path:
+        print("Converting to OpenVINO IR format (using ovc)...")
+
+        cmd = [ovc_path, str(input_path), "--output_model", str(output_xml)]
+        if precision.lower() == "fp16":
+            print("  Compressing to FP16...")
+            cmd.append("--compress_to_fp16")
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Error: ovc conversion failed:\n{result.stderr}")
+            sys.exit(1)
+
+        print(f"  Created: {output_xml}")
+        print(f"  Created: {output_bin}")
+        print()
+        print("Conversion complete!")
+        return
+
+    # No conversion tool available
+    print("Error: OpenVINO conversion tools not found.")
+    print("Install one of the following:")
+    print("  pip install -e .                          # Build C++ binding")
+    print("  sudo apt install openvino-tools           # APT ovc tool")
+    sys.exit(1)
 
 
 def _convert_to_tensorrt(input_path: Path, output_dir: Path, precision: str):
     """Convert to TensorRT engine."""
+    model_name = input_path.stem
+    output_engine = output_dir / f"{model_name}.engine"
+
+    # Strategy 1: Try C++ binding
+    try:
+        from ivit._ivit_core import convert_model
+
+        print("Converting to TensorRT engine...")
+        print(f"  Precision: {precision}")
+
+        convert_model(str(input_path), str(output_engine), "cuda:0", precision.lower())
+
+        print(f"  Created: {output_engine}")
+        print()
+        print("Conversion complete!")
+        return
+    except ImportError:
+        pass
+
+    # Strategy 2: Fall back to Python tensorrt
     try:
         import tensorrt as trt
     except ImportError:
@@ -394,10 +438,6 @@ def _convert_to_tensorrt(input_path: Path, output_dir: Path, precision: str):
     if engine_bytes is None:
         print("Error: Failed to build engine")
         sys.exit(1)
-
-    # Save engine
-    model_name = input_path.stem
-    output_engine = output_dir / f"{model_name}.engine"
 
     with open(output_engine, 'wb') as f:
         f.write(engine_bytes)

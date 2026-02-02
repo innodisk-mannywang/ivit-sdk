@@ -10,6 +10,9 @@
 #include <algorithm>
 #include <filesystem>
 #include <cstdio>
+#include <openvino/pass/manager.hpp>
+#include <openvino/pass/serialize.hpp>
+#include <openvino/pass/convert_fp32_to_fp16.hpp>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -293,8 +296,19 @@ void OpenVINORuntime::convert_model(
     // Read source model
     auto model = core_.read_model(src_path);
 
-    // Apply optimizations based on precision
-    // Note: Full INT8 quantization requires calibration data
+    // Apply precision conversion
+    if (config.precision == Precision::INT8) {
+        throw IVITError(
+            "INT8 quantization requires calibration data and is not supported "
+            "by simple model conversion. Please use NNCF toolkit: "
+            "https://github.com/openvinotoolkit/nncf");
+    }
+
+    if (config.precision == Precision::FP16) {
+        ov::pass::Manager manager;
+        manager.register_pass<ov::pass::ConvertFP32ToFP16>();
+        manager.run_passes(model);
+    }
 
     // Serialize to OpenVINO IR format
     ov::serialize(model, dst_path);
