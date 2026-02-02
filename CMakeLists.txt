@@ -274,28 +274,28 @@ endif()
 # ============================================================================
 if(IVIT_BUILD_EXAMPLES)
     add_executable(simple_inference examples/cpp/simple_inference.cpp)
-    target_link_libraries(simple_inference PRIVATE ivit)
+    target_link_libraries(simple_inference PRIVATE ivit ${OpenCV_LIBS})
 
     add_executable(classification_demo examples/cpp/classification_demo.cpp)
-    target_link_libraries(classification_demo PRIVATE ivit)
+    target_link_libraries(classification_demo PRIVATE ivit ${OpenCV_LIBS})
 
     add_executable(detection_demo examples/cpp/detection_demo.cpp)
-    target_link_libraries(detection_demo PRIVATE ivit)
+    target_link_libraries(detection_demo PRIVATE ivit ${OpenCV_LIBS})
 
     add_executable(video_demo examples/cpp/video_demo.cpp)
-    target_link_libraries(video_demo PRIVATE ivit)
+    target_link_libraries(video_demo PRIVATE ivit ${OpenCV_LIBS})
 
     add_executable(si_quickstart examples/cpp/si_quickstart.cpp)
-    target_link_libraries(si_quickstart PRIVATE ivit)
+    target_link_libraries(si_quickstart PRIVATE ivit ${OpenCV_LIBS})
 
     add_executable(embedded_optimization examples/cpp/embedded_optimization.cpp)
-    target_link_libraries(embedded_optimization PRIVATE ivit)
+    target_link_libraries(embedded_optimization PRIVATE ivit ${OpenCV_LIBS})
 
     add_executable(backend_service examples/cpp/backend_service.cpp)
-    target_link_libraries(backend_service PRIVATE ivit)
+    target_link_libraries(backend_service PRIVATE ivit ${OpenCV_LIBS})
 
     add_executable(data_analysis examples/cpp/data_analysis.cpp)
-    target_link_libraries(data_analysis PRIVATE ivit)
+    target_link_libraries(data_analysis PRIVATE ivit ${OpenCV_LIBS})
 endif()
 
 # ============================================================================
