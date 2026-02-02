@@ -124,12 +124,13 @@ TensorRTEngine::~TensorRTEngine() {
         return;
     }
 
-    // 1. Synchronize any pending operations
+    // Free device buffers and CUDA stream, then leak TRT objects.
+    // TensorRT 10.x on newer GPUs (sm_120+) can segfault during
+    // context/engine destruction. Let the OS reclaim on process exit.
     if (stream) {
         cudaStreamSynchronize(stream);
     }
 
-    // 2. Free device buffers
     for (size_t i = 0; i < device_buffers.size(); i++) {
         if (device_buffers[i]) {
             cudaFree(device_buffers[i]);
@@ -139,19 +140,15 @@ TensorRTEngine::~TensorRTEngine() {
     device_buffers.clear();
     bindings.clear();
 
-    // 3. Destroy CUDA stream
     if (stream) {
         cudaStreamDestroy(stream);
         stream = nullptr;
     }
 
-    // 4. Synchronize device before destroying TRT objects
-    cudaDeviceSynchronize();
-
-    // 5. Destroy TRT objects in reverse creation order
-    context.reset();
-    engine.reset();
-    // runtime released automatically by member destructor
+    // Intentionally leak TRT objects to avoid segfault on destruction
+    if (context) context.reset(static_cast<nvinfer1::IExecutionContext*>(nullptr), [](nvinfer1::IExecutionContext*){});
+    if (engine)  engine.reset(static_cast<nvinfer1::ICudaEngine*>(nullptr), [](nvinfer1::ICudaEngine*){});
+    if (runtime) runtime.reset(static_cast<nvinfer1::IRuntime*>(nullptr), [](nvinfer1::IRuntime*){});
 }
 
 // ============================================================================
