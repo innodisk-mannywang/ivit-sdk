@@ -564,20 +564,20 @@ def print_models(task: Optional[str] = None):
     models = list_models(task)
 
     print()
-    print("=" * 80)
+    print("=" * 88)
     print("iVIT Model Zoo")
-    print("=" * 80)
+    print("=" * 88)
     print()
-    print(f"{'Model':<20} {'Task':<12} {'Input':<12} {'Description':<30}")
-    print("-" * 80)
+    print(f"{'Model':<28} {'Task':<12} {'Input':<12} {'Description':<30}")
+    print("-" * 88)
 
     for name in models:
         info = MODEL_REGISTRY[name]
         input_str = f"{info.input_size[0]}x{info.input_size[1]}"
         desc = info.description[:28] + ".." if len(info.description) > 30 else info.description
-        print(f"{name:<20} {info.task:<12} {input_str:<12} {desc:<30}")
+        print(f"{name:<28} {info.task:<12} {input_str:<12} {desc:<30}")
 
-    print("-" * 80)
+    print("-" * 88)
     print(f"Total: {len(models)} models")
     print()
     print("Usage: model = ivit.zoo.load('yolov8n')")
