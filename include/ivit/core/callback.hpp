@@ -13,6 +13,7 @@
 #include <mutex>
 #include <chrono>
 #include <any>
+#include <stdexcept>
 
 namespace ivit {
 
