@@ -54,8 +54,9 @@ set(IVIT_BUNDLE_LIBRARIES "" CACHE INTERNAL "Libraries to bundle")
 # ============================================================================
 
 # OpenCV (required)
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui videoio)
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+message(STATUS "OpenCV libs: ${OpenCV_LIBS}")
 
 # ============================================================================
 # OpenVINO
