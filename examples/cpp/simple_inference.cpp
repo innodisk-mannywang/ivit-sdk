@@ -12,7 +12,7 @@
 #include <string>
 #include <chrono>
 #include <iomanip>
-#include <cstdlib>
+#include <unistd.h>
 #include <opencv2/opencv.hpp>
 
 #include "ivit/ivit.hpp"
