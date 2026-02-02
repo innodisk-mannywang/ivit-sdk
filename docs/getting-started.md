@@ -119,8 +119,12 @@ dpkg -l | grep nvinfer
 若需要編譯 Python binding（`-DIVIT_BUILD_PYTHON=ON`）：
 
 ```bash
+# Ubuntu 22.04
 sudo apt install python3-dev
 pip install pybind11
+
+# Ubuntu 24.04（系統 Python 不允許 pip install，改用 apt）
+sudo apt install python3-dev python3-pybind11
 ```
 
 ### 驗證安裝
