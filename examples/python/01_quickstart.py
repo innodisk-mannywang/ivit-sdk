@@ -76,7 +76,7 @@ def main():
     print(f"\nProcessing: {image_path} ({image.shape[1]}x{image.shape[0]})")
 
     # Run detection
-    results = detector.predict(image, conf_threshold=0.25)
+    results = detector.predict(image, conf_threshold=0.5)
 
     # Print results
     print(f"\nFound {len(results.detections)} objects in {results.inference_time_ms:.1f}ms:")
