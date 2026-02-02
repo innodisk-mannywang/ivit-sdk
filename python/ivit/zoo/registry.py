@@ -491,7 +491,7 @@ def _export_torchvision_onnx(name: str, onnx_path: Path, info: ModelInfo) -> Pat
         model,
         dummy,
         str(onnx_path),
-        opset_version=13,
+        opset_version=18,
         input_names=["input"],
         output_names=["output"],
         dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
