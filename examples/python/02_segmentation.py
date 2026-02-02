@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """
-iVIT-SDK Classification Demo
+iVIT-SDK Segmentation Demo
 
-Demonstrates image classification using the iVIT-SDK Python bindings.
+Demonstrates semantic segmentation using the iVIT-SDK Python bindings.
 Supports multiple backends (TensorRT, OpenVINO).
 
 Usage:
     # Run from project root
-    python examples/python/02_classification.py \
-        -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+    python examples/python/02_segmentation.py \
+        -m ~/.cache/ivit/models/deeplabv3-mobilenetv3.onnx \
         -i examples/data/images/bus.jpg
 
     # With specific device
-    python examples/python/02_classification.py \
-        -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+    python examples/python/02_segmentation.py \
+        -m ~/.cache/ivit/models/deeplabv3-mobilenetv3.onnx \
         -i examples/data/images/bus.jpg \
         -d npu
 
     # Benchmark mode
-    python examples/python/02_classification.py \
-        -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+    python examples/python/02_segmentation.py \
+        -m ~/.cache/ivit/models/deeplabv3-mobilenetv3.onnx \
         -i examples/data/images/bus.jpg \
         -d npu -b -n 100
 """
@@ -36,21 +36,21 @@ PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..'))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, 'python'))
 
 import ivit
-from ivit.vision import Classifier
+from ivit.vision import Segmentor
 import cv2
 import numpy as np
 
 
 def main():
-    parser = argparse.ArgumentParser(description='iVIT-SDK Classification Demo')
+    parser = argparse.ArgumentParser(description='iVIT-SDK Segmentation Demo')
     parser.add_argument('--model', '-m', type=str, required=True,
                         help='Path to the model file (ONNX, TensorRT engine, OpenVINO IR)')
     parser.add_argument('--device', '-d', type=str, default='auto',
                         help='Device to use (auto, cpu, cuda:0, npu)')
     parser.add_argument('--image', '-i', type=str, required=True,
                         help='Path to the input image')
-    parser.add_argument('--top-k', '-k', type=int, default=5,
-                        help='Number of top predictions to show')
+    parser.add_argument('--output', '-o', type=str, default='output_seg.jpg',
+                        help='Path to the output image')
     parser.add_argument('--benchmark', '-b', action='store_true',
                         help='Run benchmark mode')
     parser.add_argument('--iterations', '-n', type=int, default=100,
@@ -78,11 +78,11 @@ def main():
     # Load model
     print(f"Loading model: {args.model}")
     t0 = time.perf_counter()
-    classifier = Classifier(args.model, device=device)
+    segmentor = Segmentor(args.model, device=device)
     load_time = (time.perf_counter() - t0) * 1000
     print(f"Model loaded in {load_time:.1f} ms")
-    print(f"  Input size: {classifier.input_size}")
-    print(f"  Classes: {classifier.num_classes}")
+    print(f"  Input size: {segmentor.input_size}")
+    print(f"  Classes: {segmentor.num_classes}")
     print()
 
     # Load image
@@ -99,11 +99,11 @@ def main():
 
         # Warmup
         for _ in range(10):
-            classifier.predict(image, top_k=args.top_k)
+            segmentor.predict(image)
 
         # Benchmark
         for i in range(args.iterations):
-            results = classifier.predict(image, top_k=args.top_k)
+            results = segmentor.predict(image)
             times.append(results.inference_time_ms)
 
         times = np.array(times)
@@ -116,16 +116,39 @@ def main():
     else:
         # Single inference
         print("\nRunning inference...")
-        results = classifier.predict(image, top_k=args.top_k)
+        results = segmentor.predict(image)
 
         print(f"\nResults:")
         print(f"  Inference time: {results.inference_time_ms:.2f} ms ({1000/results.inference_time_ms:.1f} FPS)")
         print(f"  Device: {results.device_used}")
-        print(f"\nTop-{args.top_k} Predictions:")
+        print(f"  Mask size: {results.segmentation_mask.shape[1]}x{results.segmentation_mask.shape[0]}")
 
-        for i, cls_result in enumerate(results.classifications[:args.top_k]):
-            bar = "█" * int(cls_result.score * 20)
-            print(f"  {i+1}. {cls_result.label:20s} {cls_result.score:6.2%} {bar}")
+        # Count classes found
+        unique_classes = np.unique(results.segmentation_mask)
+        class_labels = segmentor.classes
+        print(f"  Classes found: {len(unique_classes)}")
+        for cls_id in unique_classes:
+            label = class_labels[cls_id] if cls_id < len(class_labels) else f"class_{cls_id}"
+            pixel_count = np.sum(results.segmentation_mask == cls_id)
+            total_pixels = results.segmentation_mask.size
+            print(f"    - {label}: {pixel_count / total_pixels:.1%}")
+
+        # Save visualization
+        if os.path.isabs(args.output):
+            output_path = args.output
+        else:
+            input_dir = os.path.dirname(os.path.abspath(args.image))
+            output_path = os.path.join(input_dir, args.output)
+
+        print(f"\nSaving result to: {output_path}")
+        overlay = results.overlay_mask(image, 0.5)
+        cv2.imwrite(output_path, overlay)
+
+        # Save mask
+        mask_path = output_path.rsplit('.', 1)[0] + '_mask.png'
+        colored_mask = results.colorize_mask()
+        cv2.imwrite(mask_path, colored_mask)
+        print(f"Saved mask to: {mask_path}")
 
     print("\nDone!")
     return 0
