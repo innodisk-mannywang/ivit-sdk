@@ -80,6 +80,12 @@ std::shared_ptr<IRuntime> RuntimeFactory::get_best_runtime(
         if (rt) return rt;
     } else if (ext == ".onnx") {
         // ONNX can be used by multiple backends
+        // Respect device selection: cpu/npu/gpu -> OpenVINO, cuda -> TensorRT
+        if (device == "cpu" || device.find("npu") == 0 || device.find("gpu") == 0) {
+            auto rt = get_runtime(BackendType::OpenVINO);
+            if (rt) return rt;
+        }
+
         // Priority: TensorRT > OpenVINO
         auto rt = get_runtime(BackendType::TensorRT);
         if (rt) return rt;
