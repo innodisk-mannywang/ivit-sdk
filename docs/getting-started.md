@@ -652,6 +652,7 @@ Detector detector("model.onnx", "npu", config);
 | `01_quickstart.py` | 快速入門範例 |
 | `02_detection.py` | 物件偵測完整範例 |
 | `02_classification.py` | 影像分類範例 |
+| `02_segmentation.py` | 語意分割範例 |
 
 Python 範例需要先下載模型。有兩種方式：
 
@@ -676,9 +677,24 @@ python examples/python/01_quickstart.py
 
 ```bash
 # 物件偵測（使用 NPU）
+ivit zoo download yolov8n
 python examples/python/02_detection.py \
-    -m yolov8n.onnx \
-    -i image.jpg \
+    -m ~/.cache/ivit/models/yolov8n.onnx \
+    -i examples/data/images/bus.jpg \
+    -d npu
+
+# 影像分類（使用 NPU）
+ivit zoo download yolov8n-cls
+python examples/python/02_classification.py \
+    -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+    -i examples/data/images/bus.jpg \
+    -d npu
+
+# 語意分割（使用 NPU）
+ivit zoo download deeplabv3-mobilenetv3
+python examples/python/02_segmentation.py \
+    -m ~/.cache/ivit/models/deeplabv3-mobilenetv3.onnx \
+    -i examples/data/images/bus.jpg \
     -d npu
 ```
 
