@@ -179,6 +179,23 @@ cmake .. \
 make -j$(nproc)
 ```
 
+### 安裝 Python 套件
+
+編譯完成後，安裝 Python 套件以使用 `ivit` CLI 和 Python API：
+
+```bash
+# Ubuntu 22.04
+pip install -e ".[zoo]"
+
+# Ubuntu 24.04（需要使用 venv）
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[zoo]"
+```
+
+> **注意**：Ubuntu 24.04 的系統 Python 不允許直接 `pip install`（PEP 668），必須使用 venv。
+> 之後每次開新 terminal 需先執行 `source .venv/bin/activate`。
+
 ### CMake 選項
 
 | 選項 | 預設值 | 說明 |
