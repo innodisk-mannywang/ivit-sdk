@@ -300,7 +300,7 @@ void DeviceManager::discover_devices() {
     if (!has_cpu) {
         DeviceInfo cpu;
         cpu.id = "cpu";
-        cpu.name = "CPU (Fallback)";
+        cpu.name = "CPU";
         cpu.backend = "openvino";
         cpu.type = "cpu";
         cpu.is_available = true;
