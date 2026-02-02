@@ -345,6 +345,15 @@ ov.save_model(quantized_model, "model_int8.xml")
 
 TensorRT 的 FP16/INT8 可透過 `ivit convert --precision fp16` 或 `--precision int8` 直接轉換（INT8 精度取決於硬體支援）。
 
+### Q: FP16 轉換會提升推論速度嗎？
+
+**不會**。FP16 壓縮的唯一好處是模型檔案大小減半（例如 YOLOv8n 從 13MB 縮小至 6MB），不影響推論速度：
+
+- **NPU**：硬體原生以 FP16 計算，不論模型是 FP32 或 FP16，最終執行相同的編譯結果。FP16 IR 因額外的 Convert 節點反而可能略慢。
+- **CPU**：x86 CPU 以 FP32 計算，FP16 權重會在推論時解壓回 FP32，無效能增益。
+
+**建議**：直接使用 ONNX 或 FP32 IR 即可獲得最佳效能。FP16 適合儲存空間有限的部署場景。
+
 ### Q: 轉換失敗怎麼辦？
 
 1. 確認已完成編譯並安裝（見上方「轉換前需要先編譯嗎？」）

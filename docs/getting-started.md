@@ -465,9 +465,9 @@ Detector detector("model.onnx", config.device, config);
 
 | 精度 | 說明 | 適用場景 |
 |------|------|----------|
-| `FP32` | 32 位元浮點 | 最高精度 |
-| `FP16` | 16 位元浮點 | 平衡精度與效能（NPU 推薦）|
-| `INT8` | 8 位元整數 | 最高效能（需校準） |
+| `FP32` | 32 位元浮點 | 最高精度，NPU/CPU 推薦直接使用 |
+| `FP16` | 16 位元浮點 | 縮小模型檔案（約 50%），適合儲存與部署 |
+| `INT8` | 8 位元整數 | 最高效能（需校準資料集） |
 
 ```cpp
 LoadConfig config;
@@ -522,11 +522,32 @@ ivit convert model.onnx --format openvino --precision fp16
 | 精度 | OpenVINO | TensorRT | 說明 |
 |------|----------|----------|------|
 | `fp32` | ✅ | ✅ | 預設精度 |
-| `fp16` | ✅ | ✅ | 推薦用於 NPU / GPU |
+| `fp16` | ✅ | ✅ | 縮小模型檔案，不影響推論速度（見下方說明） |
 | `int8` | ❌ | ✅（需校準） | OpenVINO INT8 需使用 [NNCF](https://github.com/openvinotoolkit/nncf) 工具 |
 
 > **INT8 限制**：OpenVINO 的 INT8 量化需要校準資料集，無法透過 `ivit convert` 直接轉換。
 > 請使用 [NNCF toolkit](https://github.com/openvinotoolkit/nncf) 進行 INT8 量化。
+
+#### FP16 轉換效能說明
+
+FP16 壓縮**不會提升推論速度**，唯一好處是模型檔案大小減半。原因如下：
+
+- **NPU**：硬體原生以 FP16 計算，不論輸入模型是 FP32 或 FP16，NPU 編譯器會自動處理精度轉換。使用 FP16 IR 反而因額外的 Convert 節點可能略慢。
+- **CPU**：x86 CPU 原生以 FP32 計算，FP16 權重會在推論時解壓回 FP32，無效能增益。
+
+以下為 YOLOv8n 在 Intel AIPC 平台的實測數據（100 次迭代）：
+
+| 模型格式 | 裝置 | 平均延遲 | 吞吐量 | 檔案大小 |
+|----------|------|----------|--------|----------|
+| ONNX (FP32) | NPU | 8.74 ms | 114 FPS | 13 MB |
+| IR FP32 | NPU | 8.77 ms | 114 FPS | ~12 MB |
+| IR FP16 | NPU | 13.38 ms | 75 FPS | ~6 MB |
+| ONNX (FP32) | CPU | 33.25 ms | 30 FPS | 13 MB |
+| IR FP32 | CPU | 34.30 ms | 29 FPS | ~12 MB |
+| IR FP16 | CPU | 34.18 ms | 29 FPS | ~6 MB |
+
+> **建議**：NPU 推論直接使用 ONNX 或 FP32 IR 即可，效能最佳。
+> FP16 轉換適合需要縮小模型檔案的部署場景（如嵌入式裝置儲存空間有限）。
 
 #### 轉換機制
 
@@ -563,12 +584,13 @@ ivit.convert_model("yolov8n.onnx", "yolov8n.xml", "cpu", "fp16")
 NPU (效率最佳) > iGPU > CPU
 ```
 
-### 2. 使用 FP16 精度
+### 2. 直接使用 ONNX 或 FP32 IR
+
+NPU 硬體原生以 FP16 計算，不需要事先轉換模型精度。直接使用 ONNX 即可獲得最佳效能：
 
 ```cpp
-LoadConfig config;
-config.precision = "fp16";
-Detector detector("model.onnx", "npu", config);
+// 直接載入 ONNX，NPU 會自動以 FP16 計算
+Detector detector("model.onnx", "npu");
 ```
 
 ### 3. 模型預熱
