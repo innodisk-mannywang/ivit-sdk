@@ -10,9 +10,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <cstdio>
-#include <openvino/pass/manager.hpp>
-#include <openvino/pass/serialize.hpp>
-#include <openvino/pass/convert_fp32_to_fp16.hpp>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -304,14 +301,11 @@ void OpenVINORuntime::convert_model(
             "https://github.com/openvinotoolkit/nncf");
     }
 
-    if (config.precision == Precision::FP16) {
-        ov::pass::Manager manager;
-        manager.register_pass<ov::pass::ConvertFP32ToFP16>();
-        manager.run_passes(model);
-    }
-
     // Serialize to OpenVINO IR format
-    ov::serialize(model, dst_path);
+    // ov::save_model handles FP16 compression correctly, including
+    // inserting proper Convert nodes at input/output boundaries.
+    bool compress_fp16 = (config.precision == Precision::FP16);
+    ov::save_model(model, dst_path, compress_fp16);
 }
 
 std::string OpenVINORuntime::map_device_name(const std::string& device) const {
