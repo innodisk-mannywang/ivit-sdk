@@ -78,7 +78,43 @@ sudo apt install \
 > **NPU 支援**：`libopenvino-intel-npu-plugin` 提供 Intel NPU 推論支援。
 > 若不需要 NPU，可以省略該套件。
 
-### Step 3：（選用）安裝 Python 綁定依賴
+### Step 3：（選用）安裝 TensorRT（NVIDIA GPU）
+
+#### x86 + NVIDIA dGPU（Ubuntu 22.04/24.04）
+
+```bash
+# 加入 NVIDIA CUDA APT 來源
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+# Ubuntu 24.04 請將 ubuntu2204 替換為 ubuntu2404
+
+sudo apt update
+
+# 安裝 CUDA Toolkit + TensorRT 開發套件
+sudo apt install cuda-toolkit tensorrt-dev
+```
+
+> 若只需要最小安裝（C++ 編譯用）：
+> ```bash
+> sudo apt install libnvinfer-dev libnvonnxparsers-dev libnvinfer-plugin-dev
+> ```
+
+#### NVIDIA Jetson（JetPack）
+
+Jetson 裝置透過 JetPack SDK 已預裝 CUDA、cuDNN、TensorRT，不需額外安裝：
+
+```bash
+# 確認 JetPack 已安裝或更新到最新版
+sudo apt update
+sudo apt install nvidia-jetpack
+
+# 驗證 TensorRT
+dpkg -l | grep nvinfer
+```
+
+> **JetPack 6.2** 預裝 TensorRT 10.3 + CUDA 12.6。
+
+### Step 4：（選用）安裝 Python 綁定依賴
 
 若需要編譯 Python binding（`-DIVIT_BUILD_PYTHON=ON`）：
 
@@ -98,6 +134,10 @@ pkg-config --modversion opencv4
 
 # 確認 OpenVINO CMake 可被找到
 ls /usr/lib/x86_64-linux-gnu/cmake/openvino/
+
+# （選用）確認 CUDA + TensorRT
+nvcc --version
+dpkg -l | grep nvinfer
 ```
 
 ---
