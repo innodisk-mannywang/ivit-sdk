@@ -65,7 +65,7 @@
 
 ```bash
 # 複製專案
-git clone https://github.com/innodisk/ivit-sdk.git
+git clone https://github.com/innodisk-mannywang/ivit-sdk.git
 cd ivit-sdk
 
 # 基本安裝
@@ -137,7 +137,7 @@ sudo apt-get install -y libopencv-dev
 
 ```bash
 # 複製專案
-git clone https://github.com/innodisk/ivit-sdk.git
+git clone https://github.com/innodisk-mannywang/ivit-sdk.git
 cd ivit-sdk
 
 # 建立建置目錄
@@ -2038,7 +2038,7 @@ model = ivit.zoo.load("yolov8n", device="npu")      # 指定 NPU
 
 ### C. 相關連結
 
-- [GitHub Repository](https://github.com/innodisk/ivit-sdk)
+- [GitHub Repository](https://github.com/innodisk-mannywang/ivit-sdk)
 - [API 文件](./api/api-spec.md)
 - [架構設計](./architecture/adr-001-system.md)
 - [產品需求](./development/prd.md)
@@ -2053,4 +2053,4 @@ model = ivit.zoo.load("yolov8n", device="npu")      # 指定 NPU
 
 ---
 
-> **需要協助？** 請前往 [GitHub Issues](https://github.com/innodisk/ivit-sdk/issues) 提交問題。
+> **需要協助？** 請前往 [GitHub Issues](https://github.com/innodisk-mannywang/ivit-sdk/issues) 提交問題。

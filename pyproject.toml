@@ -87,10 +87,10 @@ cuda = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/innodisk/ivit-sdk"
+Homepage = "https://github.com/innodisk-mannywang/ivit-sdk"
 Documentation = "https://ivit-sdk.readthedocs.io"
-Repository = "https://github.com/innodisk/ivit-sdk"
-Issues = "https://github.com/innodisk/ivit-sdk/issues"
+Repository = "https://github.com/innodisk-mannywang/ivit-sdk"
+Issues = "https://github.com/innodisk-mannywang/ivit-sdk/issues"
 
 [project.scripts]
 ivit = "ivit.cli:main"

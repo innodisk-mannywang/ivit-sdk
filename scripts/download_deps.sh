@@ -42,8 +42,22 @@ mkdir -p "$INSTALL_DIR"
 # 下載 OpenVINO
 # ============================================================================
 download_openvino() {
-    local VERSION="2024.0.0"
-    local OS_SUFFIX="ubuntu22"  # ubuntu20, ubuntu22, rhel8
+    # 先檢查系統是否已安裝 OpenVINO (pip 或系統套件)
+    if python3 -c "import openvino" 2>/dev/null; then
+        local SYS_OV_VER=$(python3 -c "import openvino; print(openvino.__version__)" 2>/dev/null)
+        log_info "System OpenVINO detected: ${SYS_OV_VER}"
+        log_info "Skipping download - CMake will use system OpenVINO via find_package()"
+        log_info "If you prefer a bundled version, uninstall system OpenVINO first."
+        return
+    fi
+
+    if [ -d "${INSTALL_DIR}/runtime" ]; then
+        log_info "OpenVINO already exists in deps/, skipping..."
+        return
+    fi
+
+    local VERSION="2024.6.0"
+    local OS_SUFFIX="ubuntu22"
 
     # 檢測 Ubuntu 版本
     if [ -f /etc/os-release ]; then
@@ -52,27 +66,35 @@ download_openvino() {
             OS_SUFFIX="ubuntu20"
         elif [[ "$VERSION_ID" == "22.04" ]]; then
             OS_SUFFIX="ubuntu22"
+        elif [[ "$VERSION_ID" == "24.04" ]]; then
+            OS_SUFFIX="ubuntu24"
         fi
     fi
 
-    local URL="https://storage.openvinotoolkit.org/repositories/openvino/packages/${VERSION}/linux/l_openvino_toolkit_${OS_SUFFIX}_${VERSION}.10926.b5b0aea2895_${ARCH_SUFFIX}.tgz"
+    log_info "Downloading OpenVINO ${VERSION}..."
+    log_info "Alternative: install via pip instead:"
+    log_info "  pip install openvino>=${VERSION}"
+
+    local URL="https://storage.openvinotoolkit.org/repositories/openvino/packages/${VERSION}/linux/l_openvino_toolkit_${OS_SUFFIX}_${VERSION}_${ARCH_SUFFIX}.tgz"
     local ARCHIVE="${DEPS_DIR}/openvino-${VERSION}.tgz"
 
-    if [ -d "${INSTALL_DIR}/runtime" ]; then
-        log_info "OpenVINO already exists, skipping..."
-        return
-    fi
-
-    log_info "Downloading OpenVINO ${VERSION}..."
     wget -q --show-progress -O "$ARCHIVE" "$URL" || {
-        log_warn "Failed to download from official URL, trying alternative..."
-        # 嘗試替代 URL
-        URL="https://github.com/openvinotoolkit/openvino/releases/download/${VERSION}/l_openvino_toolkit_${OS_SUFFIX}_${VERSION}_${ARCH_SUFFIX}.tgz"
-        wget -q --show-progress -O "$ARCHIVE" "$URL" || {
-            log_error "Failed to download OpenVINO"
-            return 1
-        }
+        log_error "Failed to download OpenVINO from: ${URL}"
+        log_info "Please install OpenVINO manually:"
+        log_info "  pip install openvino>=${VERSION}"
+        log_info "  # or follow: https://docs.openvino.ai/2024/get-started/install-openvino.html"
+        rm -f "$ARCHIVE"
+        return 1
     }
+
+    # 驗證下載的檔案是否為有效的 gzip
+    if ! file "$ARCHIVE" | grep -q "gzip"; then
+        log_error "Downloaded file is not a valid archive (URL may have changed)"
+        log_info "Please install OpenVINO manually:"
+        log_info "  pip install openvino>=${VERSION}"
+        rm -f "$ARCHIVE"
+        return 1
+    fi
 
     log_info "Extracting OpenVINO..."
     tar -xzf "$ARCHIVE" -C "${INSTALL_DIR}" --strip-components=1

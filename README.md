@@ -67,7 +67,7 @@ pip install ivit-sdk[cuda]
 
 ```bash
 # Clone 專案
-git clone https://github.com/innodisk-ai/ivit-sdk.git
+git clone https://github.com/innodisk-mannywang/ivit-sdk.git
 cd ivit-sdk
 
 # 下載 C++ 後端依賴庫（OpenVINO）

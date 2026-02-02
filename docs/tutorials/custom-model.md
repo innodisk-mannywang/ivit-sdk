@@ -688,7 +688,7 @@ class MyCustomPreProcessor(BasePreProcessor):
 
 **需要協助？**
 
-如果您遇到無法解決的問題，請在 [GitHub Issues](https://github.com/innodisk/ivit-sdk/issues) 提交問題，並附上：
+如果您遇到無法解決的問題，請在 [GitHub Issues](https://github.com/innodisk-mannywang/ivit-sdk/issues) 提交問題，並附上：
 
 1. 模型來源和訓練方式
 2. 錯誤訊息完整內容

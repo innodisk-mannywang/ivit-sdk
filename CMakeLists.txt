@@ -68,6 +68,22 @@ if(IVIT_USE_OPENVINO)
     endif()
 
     find_package(OpenVINO QUIET COMPONENTS Runtime)
+
+    # 若未找到，嘗試偵測 pip 安裝的 OpenVINO
+    if(NOT OpenVINO_FOUND)
+        execute_process(
+            COMMAND python3 -c "import openvino; import os; print(os.path.dirname(openvino.__file__))"
+            OUTPUT_VARIABLE _OV_PIP_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+            RESULT_VARIABLE _OV_PIP_RESULT
+        )
+        if(_OV_PIP_RESULT EQUAL 0 AND EXISTS "${_OV_PIP_DIR}/cmake")
+            set(OpenVINO_DIR "${_OV_PIP_DIR}/cmake")
+            message(STATUS "Using pip-installed OpenVINO from: ${OpenVINO_DIR}")
+            find_package(OpenVINO QUIET COMPONENTS Runtime)
+        endif()
+    endif()
     if(OpenVINO_FOUND)
         message(STATUS "OpenVINO found: ${OpenVINO_VERSION}")
         add_compile_definitions(IVIT_HAS_OPENVINO)

@@ -42,39 +42,53 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 
 ### 方法一：從原始碼編譯
 
+#### 前置套件安裝
+
+```bash
+# 安裝建置工具與依賴
+sudo apt update
+sudo apt install build-essential cmake pkg-config libopencv-dev
+
+# 安裝 OpenVINO（若系統尚未安裝）
+pip install openvino>=2024.0
+
+# (選用) 安裝 pybind11（若需要 Python 綁定）
+pip install pybind11
+```
+
+#### 編譯步驟
+
 ```bash
 # 1. 取得原始碼
-git clone https://github.com/innodisk/ivit-sdk.git
+git clone https://github.com/innodisk-mannywang/ivit-sdk.git
 cd ivit-sdk
 
-# 2. 下載 C++ 後端依賴庫（OpenVINO）
+# 2. (選用) 下載 C++ 後端依賴庫
+#    若系統已安裝 OpenVINO (pip install openvino)，可跳過此步驟
+#    CMake 會自動透過 find_package() 找到系統 OpenVINO
 ./scripts/download_deps.sh
 
-# 3. 安裝 Python 依賴項（若需要 Python 綁定）
-pip install pybind11
-
-# 4. 建立 build 目錄
+# 3. 建立 build 目錄
 mkdir build && cd build
 
-# 5. 執行 CMake（使用 deps 目錄中的 C++ SDK）
+# 4. 執行 CMake
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DIVIT_BUILD_EXAMPLES=ON \
     -DIVIT_BUILD_TESTS=OFF \
-    -DIVIT_BUILD_PYTHON=ON \
-    -DIVIT_BUNDLE_DEPS=ON
+    -DIVIT_BUILD_PYTHON=OFF
 
-# 6. 編譯
+# 5. 編譯
 make -j$(nproc)
 
-# 7. 安裝（可選）
+# 6. 安裝（可選）
 sudo make install
 ```
 
 > **重要**：
-> - 步驟 2 的 `download_deps.sh` 會自動下載 **OpenVINO**。
+> - 若系統已透過 `pip install openvino` 安裝 OpenVINO，CMake 會自動找到，**不需要** `download_deps.sh` 也不需要 `-DIVIT_BUNDLE_DEPS=ON`。
+> - `download_deps.sh` 適用於沒有系統級 OpenVINO 的環境，會下載獨立的 C++ Runtime 到 `deps/install/`，此時需搭配 `-DIVIT_BUNDLE_DEPS=ON`。
 > - **TensorRT** 需要 **>= 8.6 版本**，請從 [NVIDIA Developer](https://developer.nvidia.com/tensorrt) 手動下載（需登入帳號），然後解壓到 `deps/install/tensorrt/`。
-> - `-DIVIT_BUNDLE_DEPS=ON` 會啟用 `deps/install/` 目錄中的 C++ SDK。若不設定此參數，CMake 將無法找到這些後端。
 
 ### download_deps.sh 選項
 
@@ -142,7 +156,7 @@ cmake .. \
 
 ```bash
 # 下載預編譯套件
-wget https://github.com/innodisk/ivit-sdk/releases/download/v1.0.0/ivit-sdk-1.0.0-linux-x64.tar.gz
+wget https://github.com/innodisk-mannywang/ivit-sdk/releases/download/v1.0.0/ivit-sdk-1.0.0-linux-x64.tar.gz
 
 # 解壓縮
 tar -xzf ivit-sdk-1.0.0-linux-x64.tar.gz
@@ -715,8 +729,8 @@ python examples/python/02_classification.py \
 
 ## 聯絡資訊
 
-- **GitHub**: https://github.com/innodisk/ivit-sdk
-- **Issues**: https://github.com/innodisk/ivit-sdk/issues
+- **GitHub**: https://github.com/innodisk-mannywang/ivit-sdk
+- **Issues**: https://github.com/innodisk-mannywang/ivit-sdk/issues
 - **Email**: support@innodisk.com
 
 ---

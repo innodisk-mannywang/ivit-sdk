@@ -469,8 +469,8 @@ ivit.ModelLoadError: 無法載入模型 'model.onnx'
 
 ### Q: 如何取得技術支援？
 
-1. 查看文件：https://github.com/innodisk/ivit-sdk
-2. 提交 Issue：https://github.com/innodisk/ivit-sdk/issues
+1. 查看文件：https://github.com/innodisk-mannywang/ivit-sdk
+2. 提交 Issue：https://github.com/innodisk-mannywang/ivit-sdk/issues
 3. 聯繫 Innodisk 技術支援
 
 ### Q: 如何貢獻程式碼？
