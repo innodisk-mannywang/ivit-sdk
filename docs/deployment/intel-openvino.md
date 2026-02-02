@@ -9,7 +9,6 @@
 | Intel CPU | x86_64 / ARM64 | Core, Xeon, Atom |
 | Intel iGPU | x86_64 | Iris Xe, UHD Graphics |
 | Intel NPU | x86_64 | Meteor Lake, Lunar Lake |
-| Intel VPU | x86_64 / ARM64 | Movidius VPU |
 
 ## 環境準備
 

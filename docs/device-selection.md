@@ -62,7 +62,7 @@ model = ivit.load("model.onnx", device=ivit.devices.best(strategy="throughput"))
 model = ivit.load("model.onnx", device=ivit.devices.best(strategy="efficiency"))
 ```
 
-**優先順序**：NPU > VPU > iGPU > CPU > dGPU
+**優先順序**：NPU > iGPU > CPU > dGPU
 
 ### balanced
 
@@ -102,7 +102,6 @@ AMD:      0.25
 dGPU:     0.30
 iGPU:     0.20
 NPU:      0.15
-VPU:      0.10
 CPU:      0.05
 ```
 
@@ -110,7 +109,6 @@ CPU:      0.05
 
 ```
 NPU:      0.30
-VPU:      0.25
 iGPU:     0.20
 CPU:      0.15
 dGPU:     0.10

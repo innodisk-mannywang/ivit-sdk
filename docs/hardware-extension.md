@@ -256,7 +256,7 @@ class TestXXXBackend:
 
 | 平台 | 裝置 ID | 後端 | 狀態 |
 |------|---------|------|------|
-| Intel CPU/iGPU/NPU/VPU | `cpu`, `gpu:0`, `npu`, `vpu` | OpenVINO | ✅ |
+| Intel CPU/iGPU/NPU | `cpu`, `gpu:0`, `npu` | OpenVINO | ✅ |
 | NVIDIA GPU | `cuda:0`, `cuda:1`, ... | TensorRT | ✅ |
 | CPU Fallback | `cpu` | OpenVINO | ✅ |
 

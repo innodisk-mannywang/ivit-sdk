@@ -104,7 +104,6 @@ iVIT-SDK (Innodisk Vision & Inference Toolkit) 是宜鼎國際為其 AI 運算�
 | **dGPU** | Intel Arc A-Series | Xe-HPG (Alchemist) | OpenVINO | ✅ | - | P1 |
 | **dGPU** | Intel Data Center GPU Max | Xe-HPC (Ponte Vecchio) | OpenVINO | ✅ | - | P2 |
 | **NPU** | Intel AI Boost | Meteor Lake NPU | OpenVINO | ✅ | - | P0 |
-| **VPU** | Intel Movidius Myriad X | SHAVE | OpenVINO | ✅ | ✅ | P1 |
 
 **底層 Runtime 版本要求**：
 - OpenVINO >= 2024.0

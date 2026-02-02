@@ -45,7 +45,7 @@
 
 | 廠商 | 硬體 | 推論引擎 | x86 | ARM |
 |------|------|----------|:---:|:---:|
-| Intel | CPU / iGPU / NPU / VPU | OpenVINO | ✅ | ✅ |
+| Intel | CPU / iGPU / NPU | OpenVINO | ✅ | ✅ |
 | NVIDIA | dGPU / Jetson | TensorRT | ✅ | ✅ |
 | Qualcomm | IQ9/IQ8/IQ6 (Hexagon NPU) | QNN (規劃中) | - | ✅ |
 

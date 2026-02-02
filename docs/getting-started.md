@@ -469,7 +469,6 @@ struct BBox {
 | `gpu:0` | Intel 內顯 | OpenVINO |
 | `cuda:0` | NVIDIA GPU | TensorRT |
 | `npu` | Intel NPU | OpenVINO |
-| `vpu` | Intel VPU (Myriad) | OpenVINO |
 | `iq9` | Qualcomm IQ9 (QCS9075) | QNN (規劃中) |
 | `iq8` | Qualcomm IQ8 (QCS8550) | QNN (規劃中) |
 | `iq6` | Qualcomm IQ6 (QCS6490) | QNN (規劃中) |
