@@ -217,6 +217,34 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         metrics={"top1": 77.1, "top5": 93.3},
         tags=["classification", "efficient"],
     ),
+
+    # =========================================================================
+    # Semantic Segmentation Models
+    # =========================================================================
+    "deeplabv3-resnet50": ModelInfo(
+        name="deeplabv3-resnet50",
+        task="segment",
+        description="DeepLabV3 ResNet-50 - Semantic segmentation",
+        input_size=(520, 520),
+        num_classes=21,
+        formats=["onnx", "openvino"],
+        source="torchvision",
+        license="BSD-3-Clause",
+        metrics={"mIoU": 66.4},
+        tags=["segmentation", "semantic", "voc", "classic"],
+    ),
+    "deeplabv3-mobilenetv3": ModelInfo(
+        name="deeplabv3-mobilenetv3",
+        task="segment",
+        description="DeepLabV3 MobileNetV3 - Lightweight semantic segmentation",
+        input_size=(520, 520),
+        num_classes=21,
+        formats=["onnx", "openvino"],
+        source="torchvision",
+        license="BSD-3-Clause",
+        metrics={"mIoU": 60.3},
+        tags=["segmentation", "semantic", "voc", "mobile", "efficient"],
+    ),
 }
 
 
@@ -383,6 +411,10 @@ def download(
         if format == "onnx":
             model_path = _convert_to_onnx(pt_path, model_path, info)
 
+    elif info.source == "torchvision":
+        if format == "onnx":
+            model_path = _export_torchvision_onnx(name, model_path, info)
+
     return model_path
 
 
@@ -408,6 +440,65 @@ def _convert_to_onnx(pt_path: Path, onnx_path: Path, info: ModelInfo) -> Path:
             "Ultralytics required for model conversion. "
             "Install with: pip install ultralytics"
         )
+
+
+_TORCHVISION_MODEL_MAP = {
+    "resnet50": ("resnet50", "ResNet50_Weights.DEFAULT"),
+    "mobilenetv3": ("mobilenet_v3_large", "MobileNet_V3_Large_Weights.DEFAULT"),
+    "efficientnet-b0": ("efficientnet_b0", "EfficientNet_B0_Weights.DEFAULT"),
+    "deeplabv3-resnet50": ("deeplabv3_resnet50", "DeepLabV3_ResNet50_Weights.DEFAULT"),
+    "deeplabv3-mobilenetv3": ("deeplabv3_mobilenet_v3_large", "DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT"),
+}
+
+
+def _export_torchvision_onnx(name: str, onnx_path: Path, info: ModelInfo) -> Path:
+    """Export a torchvision model to ONNX."""
+    try:
+        import torch
+        import torchvision.models as models
+        import torchvision.models.segmentation as seg_models
+    except ImportError:
+        raise ImportError(
+            "PyTorch and torchvision required for torchvision model export. "
+            "Install with: pip install torch torchvision"
+        )
+
+    if name not in _TORCHVISION_MODEL_MAP:
+        raise ValueError(f"No torchvision mapping for model: {name}")
+
+    func_name, weights_name = _TORCHVISION_MODEL_MAP[name]
+
+    logger.info(f"Loading torchvision model: {func_name}")
+
+    # Segmentation models live in torchvision.models.segmentation
+    if hasattr(seg_models, func_name):
+        module = seg_models
+    else:
+        module = models
+
+    weights_enum = None
+    for part in weights_name.split("."):
+        weights_enum = getattr(module if weights_enum is None else weights_enum, part)
+
+    model = getattr(module, func_name)(weights=weights_enum)
+    model.eval()
+
+    h, w = info.input_size
+    dummy = torch.randn(1, 3, h, w)
+
+    logger.info(f"Exporting to ONNX: {onnx_path}")
+    torch.onnx.export(
+        model,
+        dummy,
+        str(onnx_path),
+        opset_version=13,
+        input_names=["input"],
+        output_names=["output"],
+        dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
+    )
+
+    logger.info(f"Exported: {onnx_path}")
+    return onnx_path
 
 
 def load(
