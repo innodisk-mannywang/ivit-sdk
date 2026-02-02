@@ -286,9 +286,8 @@ void DeviceManager::discover_devices() {
     // discover_xxx_devices();
 
     // ========================================================================
-    // CPU Fallback - Always available via OpenVINO
+    // CPU Fallback - Available when OpenVINO is installed
     // ========================================================================
-    // Always add CPU fallback
     bool has_cpu = false;
     for (const auto& dev : devices_) {
         if (dev.type == "cpu") {
@@ -297,7 +296,7 @@ void DeviceManager::discover_devices() {
         }
     }
 
-    if (!has_cpu) {
+    if (!has_cpu && openvino_is_available()) {
         DeviceInfo cpu;
         cpu.id = "cpu";
         cpu.name = "CPU";
