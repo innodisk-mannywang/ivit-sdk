@@ -368,30 +368,54 @@ endif()
 # Package configuration
 # ============================================================================
 if(IVIT_BUNDLE_DEPS)
-    # 建立打包腳本
-    file(WRITE "${CMAKE_BINARY_DIR}/package_sdk.sh" [[
-#!/bin/bash
-# Package iVIT-SDK for distribution
+    # 建立打包腳本 (使用 configure_file 展開 CMake 變數)
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/packaging/package_sdk.sh.in"
+        "${CMAKE_BINARY_DIR}/package_sdk.sh"
+        @ONLY
+    )
+endif()
 
-SDK_NAME="ivit-sdk-${PROJECT_VERSION}-linux-$(uname -m)"
-INSTALL_DIR="${CMAKE_INSTALL_PREFIX}"
-PACKAGE_DIR="${CMAKE_BINARY_DIR}/${SDK_NAME}"
+# ============================================================================
+# CPack DEB 設定
+# ============================================================================
+include(CPack)
 
-echo "Creating SDK package: ${SDK_NAME}"
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "ivit-sdk")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_CONTACT "Innodisk AI Team <ai@innodisk.com>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "iVIT-SDK: Unified CV inference SDK for Intel and NVIDIA platforms")
+set(CPACK_PACKAGE_VENDOR "Innodisk")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://www.innodisk.com")
 
-# 清理並建立目錄
-rm -rf "${PACKAGE_DIR}"
-mkdir -p "${PACKAGE_DIR}"
+# DEB 特定設定
+set(CPACK_DEBIAN_PACKAGE_SECTION "libs")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 
-# 複製安裝檔案
-cp -r "${INSTALL_DIR}"/* "${PACKAGE_DIR}/"
+# 依平台設定系統依賴
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libopencv-dev (>= 4.0)")
+if(IVIT_USE_OPENVINO)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}, openvino (>= 2024.0)")
+endif()
+if(IVIT_USE_TENSORRT)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}, libnvinfer-dev")
+endif()
 
-# 建立 tarball
-cd "${CMAKE_BINARY_DIR}"
-tar -czvf "${SDK_NAME}.tar.gz" "${SDK_NAME}"
+# 架構與平台後綴
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
+else()
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+endif()
 
-echo "Package created: ${CMAKE_BINARY_DIR}/${SDK_NAME}.tar.gz"
-]])
+# 用平台後綴區分不同後端的 .deb
+if(IVIT_USE_TENSORRT AND NOT IVIT_USE_OPENVINO)
+    set(CPACK_PACKAGE_FILE_NAME "ivit-sdk_${PROJECT_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}-nvidia")
+elseif(IVIT_USE_OPENVINO AND NOT IVIT_USE_TENSORRT)
+    set(CPACK_PACKAGE_FILE_NAME "ivit-sdk_${PROJECT_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}-intel")
+else()
+    set(CPACK_PACKAGE_FILE_NAME "ivit-sdk_${PROJECT_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
 endif()
 
 # ============================================================================

@@ -1,0 +1,335 @@
+# iVIT-SDK Release Automation
+#
+# 觸發條件：
+#   - 推送 tag (v*)
+#   - 手動觸發 (workflow_dispatch)
+#
+# 產出：
+#   - Tarball (3 平台)
+#   - Deb 套件 (3 平台)
+#   - Docker images (3 平台)
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+      platforms:
+        description: 'Platforms to build (comma-separated or "all")'
+        required: true
+        default: 'all'
+      skip_docker:
+        description: 'Skip Docker build'
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ==========================================================================
+  # 準備階段：解析版本與平台
+  # ==========================================================================
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Build matrix
+        id: matrix
+        run: |
+          PLATFORMS="${{ github.event.inputs.platforms || 'all' }}"
+          if [[ "$PLATFORMS" == "all" ]]; then
+            MATRIX='["x86_64-nvidia", "x86_64-intel", "aarch64-jetson"]'
+          else
+            # Convert comma-separated to JSON array
+            MATRIX=$(echo "$PLATFORMS" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
+          fi
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Matrix: $MATRIX"
+
+  # ==========================================================================
+  # Tarball 建置
+  # ==========================================================================
+  build-tarball:
+    needs: prepare
+    runs-on: ${{ matrix.platform == 'aarch64-jetson' && 'self-hosted-arm64' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libopencv-dev
+
+      - name: Setup CUDA (NVIDIA platforms)
+        if: contains(matrix.platform, 'nvidia') || contains(matrix.platform, 'jetson')
+        uses: Jimver/cuda-toolkit@v0.2.11
+        with:
+          cuda: '12.2.0'
+          method: 'network'
+
+      - name: Setup OpenVINO (Intel platform)
+        if: contains(matrix.platform, 'intel')
+        run: |
+          wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | sudo gpg --dearmor -o /usr/share/keyrings/intel.gpg
+          echo "deb [signed-by=/usr/share/keyrings/intel.gpg] https://apt.repos.intel.com/openvino/2024 ubuntu22 main" | sudo tee /etc/apt/sources.list.d/intel-openvino.list
+          sudo apt-get update
+          sudo apt-get install -y openvino-2024.0.0
+
+      - name: Build tarball
+        run: |
+          chmod +x scripts/build_tarball.sh
+          ./scripts/build_tarball.sh ${{ matrix.platform }}
+
+      - name: Verify tarball
+        run: |
+          chmod +x scripts/verify_package.sh
+          ./scripts/verify_package.sh tarball build-tarball-${{ matrix.platform }}/ivit-sdk-*.tar.gz
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.platform }}
+          path: build-tarball-${{ matrix.platform }}/ivit-sdk-*.tar.gz
+          retention-days: 30
+
+  # ==========================================================================
+  # Deb 套件建置
+  # ==========================================================================
+  build-deb:
+    needs: prepare
+    runs-on: ${{ matrix.platform == 'aarch64-jetson' && 'self-hosted-arm64' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libopencv-dev dpkg-dev
+
+      - name: Setup CUDA (NVIDIA platforms)
+        if: contains(matrix.platform, 'nvidia') || contains(matrix.platform, 'jetson')
+        uses: Jimver/cuda-toolkit@v0.2.11
+        with:
+          cuda: '12.2.0'
+          method: 'network'
+
+      - name: Setup OpenVINO (Intel platform)
+        if: contains(matrix.platform, 'intel')
+        run: |
+          wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | sudo gpg --dearmor -o /usr/share/keyrings/intel.gpg
+          echo "deb [signed-by=/usr/share/keyrings/intel.gpg] https://apt.repos.intel.com/openvino/2024 ubuntu22 main" | sudo tee /etc/apt/sources.list.d/intel-openvino.list
+          sudo apt-get update
+          sudo apt-get install -y openvino-2024.0.0
+
+      - name: Build deb
+        run: |
+          chmod +x scripts/build_deb.sh
+          ./scripts/build_deb.sh ${{ matrix.platform }}
+
+      - name: Verify deb
+        run: |
+          chmod +x scripts/verify_package.sh
+          ./scripts/verify_package.sh deb build-deb-${{ matrix.platform }}/ivit-sdk_*.deb
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.platform }}
+          path: build-deb-${{ matrix.platform }}/ivit-sdk_*.deb
+          retention-days: 30
+
+  # ==========================================================================
+  # Docker Image 建置
+  # ==========================================================================
+  build-docker:
+    needs: prepare
+    if: ${{ github.event.inputs.skip_docker != 'true' }}
+    runs-on: ${{ matrix.platform == 'aarch64-jetson' && 'self-hosted-arm64' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Dockerfile and tags
+        id: docker-meta
+        run: |
+          PLATFORM="${{ matrix.platform }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          case "$PLATFORM" in
+            x86_64-nvidia)
+              DOCKERFILE="docker/Dockerfile.release-nvidia"
+              SUFFIX="nvidia"
+              ;;
+            x86_64-intel)
+              DOCKERFILE="docker/Dockerfile.release-intel"
+              SUFFIX="intel"
+              ;;
+            aarch64-jetson)
+              DOCKERFILE="docker/Dockerfile.release-jetson"
+              SUFFIX="jetson"
+              ;;
+          esac
+
+          echo "dockerfile=$DOCKERFILE" >> $GITHUB_OUTPUT
+          echo "suffix=$SUFFIX" >> $GITHUB_OUTPUT
+          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-${SUFFIX},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-${SUFFIX}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ steps.docker-meta.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================================================
+  # GitHub Release 發布
+  # ==========================================================================
+  publish-release:
+    needs: [prepare, build-tarball, build-deb]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -name "*.tar.gz" -exec cp {} release/ \;
+          find artifacts -name "*.deb" -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          cat << EOF > release-notes.md
+          ## iVIT-SDK v${VERSION}
+
+          ### 下載說明
+
+          | 平台 | Tarball | Deb |
+          |------|---------|-----|
+          | x86_64 + NVIDIA | \`ivit-sdk-${VERSION}-x86_64-nvidia.tar.gz\` | \`ivit-sdk_${VERSION}_amd64-nvidia.deb\` |
+          | x86_64 + Intel | \`ivit-sdk-${VERSION}-x86_64-intel.tar.gz\` | \`ivit-sdk_${VERSION}_amd64-intel.deb\` |
+          | aarch64 + Jetson | \`ivit-sdk-${VERSION}-aarch64-jetson.tar.gz\` | \`ivit-sdk_${VERSION}_arm64-jetson.deb\` |
+
+          ### Docker Images
+
+          \`\`\`bash
+          # NVIDIA (x86_64)
+          docker pull ghcr.io/${{ github.repository }}:${VERSION}-nvidia
+
+          # Intel (x86_64)
+          docker pull ghcr.io/${{ github.repository }}:${VERSION}-intel
+
+          # Jetson (aarch64)
+          docker pull ghcr.io/${{ github.repository }}:${VERSION}-jetson
+          \`\`\`
+
+          ### 安裝方式
+
+          **Tarball**
+          \`\`\`bash
+          tar -xzf ivit-sdk-${VERSION}-<platform>.tar.gz
+          cd ivit-sdk-${VERSION}-<platform>
+          source bin/setup_env.sh
+          \`\`\`
+
+          **Deb**
+          \`\`\`bash
+          sudo dpkg -i ivit-sdk_${VERSION}_<arch>-<backend>.deb
+          sudo apt-get install -f  # 安裝依賴
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: iVIT-SDK v${{ needs.prepare.outputs.version }}
+          body_path: release-notes.md
+          files: release/*
+          draft: false
+          prerelease: ${{ contains(needs.prepare.outputs.version, 'rc') || contains(needs.prepare.outputs.version, 'beta') }}
+
+  # ==========================================================================
+  # 通知
+  # ==========================================================================
+  notify:
+    needs: [prepare, build-tarball, build-deb, build-docker, publish-release]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify on success
+        if: ${{ !contains(needs.*.result, 'failure') }}
+        run: |
+          echo "✅ Release v${{ needs.prepare.outputs.version }} completed successfully!"
+          # 可加入 Slack/Teams webhook 通知
+
+      - name: Notify on failure
+        if: ${{ contains(needs.*.result, 'failure') }}
+        run: |
+          echo "❌ Release v${{ needs.prepare.outputs.version }} failed!"
+          exit 1
