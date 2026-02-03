@@ -1,0 +1,163 @@
+# iVIT-SDK Test Workflow
+#
+# 觸發條件：
+#   - Push 到 main、develop、feature/* 分支
+#   - Pull Request 到 main
+#
+# 執行項目：
+#   - Python 單元/整合測試
+#   - Code coverage 報告
+
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/*'
+  pull_request:
+    branches:
+      - main
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  # ==========================================================================
+  # Python 測試
+  # ==========================================================================
+  python-test:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopencv-dev
+
+      - name: Install PyTorch (CPU)
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install package with dev dependencies
+        run: |
+          pip install -e ".[dev,train]"
+
+      - name: Run tests (excluding GPU tests)
+        run: |
+          pytest tests/ -v --tb=short -k "not gpu" --ignore=tests/cpp/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: |
+            pytest-results.xml
+            coverage.xml
+          retention-days: 7
+
+  # ==========================================================================
+  # 訓練模組測試
+  # ==========================================================================
+  training-test:
+    name: Training Module Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopencv-dev
+
+      - name: Install PyTorch (CPU)
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install package with training dependencies
+        run: |
+          pip install -e ".[dev,train]"
+
+      - name: Run training tests
+        run: |
+          pytest tests/integration/test_training_workflow.py -v --tb=short -k "not gpu"
+
+      - name: Run C++ training API tests
+        run: |
+          pytest tests/integration/test_train_cpp.py -v --tb=short
+
+  # ==========================================================================
+  # Lint 檢查
+  # ==========================================================================
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install linting tools
+        run: |
+          pip install flake8 black isort mypy
+
+      - name: Run flake8
+        run: |
+          flake8 python/ --max-line-length=100 --ignore=E501,W503,E203
+
+      - name: Check black formatting
+        run: |
+          black --check python/ --line-length=100 || echo "::warning::Some files need formatting"
+
+      - name: Check import sorting
+        run: |
+          isort --check-only python/ || echo "::warning::Imports need sorting"
+
+  # ==========================================================================
+  # 測試摘要
+  # ==========================================================================
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [python-test, training-test, lint]
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.python-test.result }}" == "failure" ]] || \
+             [[ "${{ needs.training-test.result }}" == "failure" ]]; then
+            echo "::error::Some tests failed"
+            exit 1
+          fi
+          echo "All tests passed!"

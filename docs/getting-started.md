@@ -821,7 +821,120 @@ python examples/python/02_segmentation.py \
 
 ---
 
+---
+
+## 訓練模組
+
+iVIT-SDK 提供遷移式學習功能，可將預訓練模型微調到您的自訂資料集。
+
+### 安裝訓練依賴
+
+```bash
+# 基本訓練功能
+pip install ivit-sdk[train]
+
+# 根據您的 CUDA 版本安裝 PyTorch
+# CUDA 12.1
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# CPU 版本（CI/測試環境）
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+```
+
+### 訓練快速開始
+
+```python
+from ivit.train import Trainer, ImageFolderDataset
+
+# 1. 準備 ImageFolder 格式資料集
+#    my_dataset/
+#    ├── cat/
+#    │   ├── cat_001.jpg
+#    │   └── ...
+#    └── dog/
+#        └── ...
+
+dataset = ImageFolderDataset("./my_dataset", train_split=0.8)
+
+# 2. 建立 Trainer
+trainer = Trainer(
+    model="resnet50",      # 預訓練模型
+    dataset=dataset,
+    epochs=20,
+    learning_rate=0.001,
+    device="cuda:0",       # 或 "cpu"
+    freeze_backbone=True,  # 遷移式學習：只訓練分類頭
+)
+
+# 3. 開始訓練
+history = trainer.fit()
+
+# 4. 評估模型
+metrics = trainer.evaluate()
+print(f"Accuracy: {metrics['accuracy']:.2%}")
+
+# 5. 匯出模型
+trainer.export("my_model.onnx")
+```
+
+### 支援的預訓練模型
+
+| 模型 | 名稱 | 參數量 | 推薦用途 |
+|------|------|--------|----------|
+| ResNet | resnet18, resnet50 | 11M-25M | 通用分類 |
+| MobileNet | mobilenet_v2, mobilenet_v3_small | 2M-3M | 邊緣部署 |
+| EfficientNet | efficientnet_b0, efficientnet_b1 | 5M-8M | 效率優先 |
+
+> **完整訓練教學**：[訓練教學文件](tutorials/training-guide.md)
+
+---
+
 ## 常見問題
+
+### Q: PyTorch CUDA 版本與系統 CUDA 版本衝突？
+
+**症狀**：出現 `nvjitlink` 相關錯誤，例如：
+```
+undefined symbol: __nvJitLinkVersion_12_4
+```
+
+**原因**：PyTorch 打包的 CUDA 版本與系統安裝的 CUDA 版本不一致。
+
+**解決方案**：
+
+1. **安裝對應版本 PyTorch（推薦）**：
+
+   ```bash
+   # 查詢系統 CUDA 版本
+   nvcc --version
+
+   # 安裝對應版本 PyTorch
+   # CUDA 12.6
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+
+   # CUDA 12.4
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+   # CUDA 12.1
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+   ```
+
+2. **使用 CPU 版本（CI 環境）**：
+
+   ```bash
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+   ```
+
+3. **設定 LD_PRELOAD（臨時解決）**：
+
+   ```bash
+   # 找到 PyTorch 附帶的 nvjitlink 庫
+   python -c "import torch; print(torch.__path__[0])"
+   # 例如: /path/to/site-packages/torch
+
+   # 設定環境變數
+   export LD_PRELOAD=/path/to/site-packages/torch/lib/libnvJitLink.so.12
+   ```
 
 ### Q: cmake 找不到 OpenVINO？
 

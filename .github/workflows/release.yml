@@ -36,9 +36,42 @@ env:
 
 jobs:
   # ==========================================================================
+  # 測試階段：確保程式碼品質
+  # ==========================================================================
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopencv-dev
+
+      - name: Install PyTorch (CPU)
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install package
+        run: |
+          pip install -e ".[dev,train]"
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short -k "not gpu" --ignore=tests/cpp/
+
+  # ==========================================================================
   # 準備階段：解析版本與平台
   # ==========================================================================
   prepare:
+    needs: test
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}

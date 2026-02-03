@@ -44,6 +44,31 @@ make -j$(nproc)
 
 ## 快速開始
 
+### 訓練
+
+```python
+from ivit.train import Trainer, ImageFolderDataset
+
+# 準備資料集（ImageFolder 格式）
+dataset = ImageFolderDataset("./my_dataset", train_split=0.8)
+
+# 建立 Trainer 並開始訓練
+trainer = Trainer(
+    model="resnet50",
+    dataset=dataset,
+    epochs=20,
+    device="cuda:0",
+)
+trainer.fit()
+
+# 評估並匯出模型
+metrics = trainer.evaluate()
+print(f"Accuracy: {metrics['accuracy']:.2%}")
+trainer.export("model.onnx")
+```
+
+> **詳細教學**：[訓練教學文件](docs/tutorials/training-guide.md)
+
 ### Python
 
 ```python
