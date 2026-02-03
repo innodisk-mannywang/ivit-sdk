@@ -28,13 +28,9 @@ OpenVINORuntime::~OpenVINORuntime() = default;
 void OpenVINORuntime::initialize() {
     if (initialized_) return;
 
-    // Suppress internal OpenCL compiler warnings (e.g. "Failed to read file: /tmp/dep-*.d")
-    // Note: Some plugins (e.g. GPU) may not support LOG_LEVEL, so ignore errors
-    try {
-        core_.set_property(ov::log::level(ov::log::Level::ERR));
-    } catch (...) {
-        // Ignore — plugin does not support this property
-    }
+    // Note: Do NOT set ov::log::level globally — GPU plugin does not support
+    // LOG_LEVEL and will fail to load. Stderr noise from OpenCL compiler is
+    // suppressed via stderr redirection in device_manager.cpp instead.
 
     // Enable model caching if cache directory is set
     if (!cache_dir_.empty()) {
