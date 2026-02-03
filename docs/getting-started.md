@@ -38,6 +38,7 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 | pkg-config | 套件偵測 | APT |
 | libopencv-dev | OpenCV 4.5+ (含 dnn 模組) | APT |
 | libopenvino-dev | OpenVINO C++ Runtime | Intel APT |
+| intel-opencl-icd | Intel GPU OpenCL Runtime（iGPU 推論需要）| Intel APT |
 | python3-dev | Python 標頭檔（Python 綁定需要）| APT |
 | pybind11 | Python/C++ 綁定（Python 綁定需要）| pip |
 
@@ -56,7 +57,28 @@ sudo apt update
 sudo apt install build-essential cmake pkg-config libopencv-dev
 ```
 
-### Step 2：安裝 OpenVINO（Intel APT 來源）
+### Step 2：安裝 Intel GPU Compute Runtime（iGPU 推論需要）
+
+Ubuntu 預設的 `intel-opencl-icd` 版本過舊，無法搭配 OpenVINO 2025.4.1。
+需從 Intel 官方 GPU repo 安裝較新版本：
+
+```bash
+# 加入 Intel GPU APT 金鑰
+sudo apt-key adv --fetch-keys https://repositories.intel.com/gpu/intel-graphics.key
+
+# 加入 Intel GPU APT 來源（依 Ubuntu 版本選擇）
+# Ubuntu 22.04:
+sudo bash -c 'echo "deb [arch=amd64] https://repositories.intel.com/gpu/ubuntu jammy unified" > /etc/apt/sources.list.d/intel-gpu.list'
+# Ubuntu 24.04:
+sudo bash -c 'echo "deb [arch=amd64] https://repositories.intel.com/gpu/ubuntu noble unified" > /etc/apt/sources.list.d/intel-gpu.list'
+
+sudo apt update
+sudo apt install intel-opencl-icd
+```
+
+> 若不需要 Intel iGPU 推論，可以跳過此步驟。
+
+### Step 3：安裝 OpenVINO（Intel APT 來源）
 
 ```bash
 # 加入 Intel APT 金鑰
@@ -73,17 +95,15 @@ sudo apt install \
     libopenvino-intel-cpu-plugin-2025.4.1 \
     libopenvino-intel-gpu-plugin-2025.4.1 \
     libopenvino-intel-npu-plugin-2025.4.1 \
-    libopenvino-onnx-frontend-2025.4.1 \
-    intel-opencl-icd
+    libopenvino-onnx-frontend-2025.4.1
 ```
 
-> **iGPU 支援**：`libopenvino-intel-gpu-plugin` 提供 Intel iGPU 推論支援，`intel-opencl-icd` 提供 Intel OpenCL runtime。
-> 若系統同時有 NVIDIA dGPU 與 Intel iGPU，需安裝這兩個套件才能讓 OpenVINO 正確偵測到 Intel iGPU。
+> **iGPU 支援**：`libopenvino-intel-gpu-plugin` 提供 Intel iGPU 推論支援，需搭配 Step 2 安裝的 `intel-opencl-icd`。
 >
 > **NPU 支援**：`libopenvino-intel-npu-plugin` 提供 Intel NPU 推論支援。
 > 若不需要 NPU，可以省略該套件。
 
-### Step 3：（選用）安裝 TensorRT（NVIDIA GPU）
+### Step 4：（選用）安裝 TensorRT（NVIDIA GPU）
 
 #### x86 + NVIDIA dGPU（Ubuntu 22.04/24.04）
 
@@ -119,7 +139,7 @@ dpkg -l | grep nvinfer
 
 > **JetPack 6.2** 預裝 TensorRT 10.3 + CUDA 12.6。
 
-### Step 4：（選用）安裝 Python 綁定依賴
+### Step 5：（選用）安裝 Python 綁定依賴
 
 若需要編譯 Python binding（`-DIVIT_BUILD_PYTHON=ON`）：
 
