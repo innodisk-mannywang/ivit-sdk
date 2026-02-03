@@ -71,10 +71,15 @@ sudo apt update
 sudo apt install \
     libopenvino-dev-2025.4.1 \
     libopenvino-intel-cpu-plugin-2025.4.1 \
+    libopenvino-intel-gpu-plugin-2025.4.1 \
     libopenvino-intel-npu-plugin-2025.4.1 \
-    libopenvino-onnx-frontend-2025.4.1
+    libopenvino-onnx-frontend-2025.4.1 \
+    intel-opencl-icd
 ```
 
+> **iGPU 支援**：`libopenvino-intel-gpu-plugin` 提供 Intel iGPU 推論支援，`intel-opencl-icd` 提供 Intel OpenCL runtime。
+> 若系統同時有 NVIDIA dGPU 與 Intel iGPU，需安裝這兩個套件才能讓 OpenVINO 正確偵測到 Intel iGPU。
+>
 > **NPU 支援**：`libopenvino-intel-npu-plugin` 提供 Intel NPU 推論支援。
 > 若不需要 NPU，可以省略該套件。
 
@@ -137,7 +142,7 @@ cmake --version
 pkg-config --modversion opencv4
 
 # 確認 OpenVINO CMake 可被找到
-ls /usr/lib/x86_64-linux-gnu/cmake/openvino/
+ls /usr/lib/cmake/openvino2025.4.1/
 
 # （選用）確認 CUDA + TensorRT
 nvcc --version
@@ -768,7 +773,7 @@ python examples/python/02_segmentation.py \
 
 ```bash
 # 檢查 CMake 設定檔是否存在
-ls /usr/lib/x86_64-linux-gnu/cmake/openvino/
+ls /usr/lib/cmake/openvino2025.4.1/
 
 # 若不存在，安裝 dev 套件
 sudo apt install libopenvino-dev-2025.4.1

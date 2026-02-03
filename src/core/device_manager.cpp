@@ -343,6 +343,13 @@ void DeviceManager::discover_openvino_devices() {
                 info.id = "cpu";
                 info.type = "cpu";
             } else if (device_name.find("GPU") != std::string::npos) {
+                // Filter out NVIDIA GPUs — they should use TensorRT, not OpenVINO
+                std::string name_upper = info.name;
+                std::transform(name_upper.begin(), name_upper.end(), name_upper.begin(), ::toupper);
+                if (name_upper.find("NVIDIA") != std::string::npos ||
+                    name_upper.find("GEFORCE") != std::string::npos) {
+                    continue;
+                }
                 info.id = "gpu:0";
                 info.type = "gpu";
             } else if (device_name.find("NPU") != std::string::npos) {
