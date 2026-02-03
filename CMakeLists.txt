@@ -10,6 +10,7 @@ option(IVIT_BUILD_EXAMPLES "Build examples" ON)
 option(IVIT_USE_OPENVINO "Enable OpenVINO backend" ON)
 option(IVIT_USE_TENSORRT "Enable TensorRT backend" ON)
 option(IVIT_USE_QNN "Enable QNN backend (Qualcomm IQ Series)" OFF)
+option(IVIT_USE_TORCH "Enable LibTorch for training module" ON)
 
 # 依賴打包選項
 option(IVIT_BUNDLE_DEPS "Bundle dependencies into SDK for redistribution" OFF)
@@ -195,6 +196,90 @@ if(IVIT_USE_TENSORRT)
     list(APPEND IVIT_SOURCES src/runtime/tensorrt_runtime.cpp)
 endif()
 
+# ============================================================================
+# LibTorch for Training Module
+# ============================================================================
+if(IVIT_USE_TORCH)
+    # Try to find LibTorch from Python PyTorch installation
+    # Use python3 directly since Python package hasn't been found yet
+    execute_process(
+        COMMAND python3 -c "import torch; print(torch.utils.cmake_prefix_path)"
+        OUTPUT_VARIABLE TORCH_CMAKE_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE TORCH_PIP_RESULT
+    )
+
+    if(TORCH_PIP_RESULT EQUAL 0 AND EXISTS "${TORCH_CMAKE_PREFIX}")
+        list(APPEND CMAKE_PREFIX_PATH "${TORCH_CMAKE_PREFIX}")
+        message(STATUS "Using pip-installed PyTorch from: ${TORCH_CMAKE_PREFIX}")
+    endif()
+
+    find_package(Torch QUIET)
+
+    if(Torch_FOUND)
+        message(STATUS "LibTorch found: ${TORCH_VERSION}")
+        add_compile_definitions(IVIT_HAS_TORCH)
+
+        # Training module sources
+        set(IVIT_TRAIN_SOURCES
+            src/train/dataset.cpp
+            src/train/augmentation.cpp
+            src/train/callbacks.cpp
+            src/train/trainer.cpp
+            src/train/exporter.cpp
+        )
+
+        # Create training library
+        add_library(ivit_train SHARED ${IVIT_TRAIN_SOURCES})
+
+        target_include_directories(ivit_train
+            PUBLIC
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                $<INSTALL_INTERFACE:include>
+                ${OpenCV_INCLUDE_DIRS}
+                ${TORCH_INCLUDE_DIRS}
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/src
+        )
+
+        target_link_libraries(ivit_train
+            PUBLIC
+                ivit
+                ${OpenCV_LIBRARIES}
+                ${TORCH_LIBRARIES}
+        )
+
+        # Set C++ ABI to match PyTorch
+        # PyTorch 2.x uses the new C++11 ABI
+        execute_process(
+            COMMAND python3 -c "import torch; print('1' if torch.compiled_with_cxx11_abi() else '0')"
+            OUTPUT_VARIABLE TORCH_CXX11_ABI
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(TORCH_CXX11_ABI STREQUAL "1")
+            target_compile_definitions(ivit_train PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
+            message(STATUS "Using C++11 ABI for LibTorch compatibility")
+        else()
+            target_compile_definitions(ivit_train PRIVATE _GLIBCXX_USE_CXX11_ABI=0)
+            message(STATUS "Using old C++ ABI for LibTorch compatibility")
+        endif()
+        if(TORCH_CXX_FLAGS)
+            target_compile_options(ivit_train PRIVATE ${TORCH_CXX_FLAGS})
+        endif()
+
+        # Collect torch libraries for bundling
+        if(IVIT_BUNDLE_DEPS)
+            get_filename_component(TORCH_LIB_DIR "${TORCH_CMAKE_PREFIX}/../lib" ABSOLUTE)
+            file(GLOB TORCH_LIBS "${TORCH_LIB_DIR}/libtorch*.so*" "${TORCH_LIB_DIR}/libc10*.so*")
+            list(APPEND IVIT_BUNDLE_LIBRARIES ${TORCH_LIBS})
+        endif()
+    else()
+        message(WARNING "LibTorch not found, disabling training module")
+        set(IVIT_USE_TORCH OFF)
+    endif()
+endif()
 
 # ============================================================================
 # Create library
@@ -249,14 +334,40 @@ if(IVIT_BUILD_PYTHON)
     pybind11_add_module(_ivit_core python/ivit/_binding.cpp)
     target_link_libraries(_ivit_core PRIVATE ivit)
 
+    # Training module Python bindings
+    if(IVIT_USE_TORCH)
+        pybind11_add_module(_ivit_train_core python/ivit/_train_binding.cpp)
+        target_link_libraries(_ivit_train_core PRIVATE ivit_train)
+
+        # Set C++ ABI to match PyTorch (same as ivit_train)
+        if(TORCH_CXX11_ABI STREQUAL "1")
+            target_compile_definitions(_ivit_train_core PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
+        else()
+            target_compile_definitions(_ivit_train_core PRIVATE _GLIBCXX_USE_CXX11_ABI=0)
+        endif()
+
+        if(TORCH_CXX_FLAGS)
+            target_compile_options(_ivit_train_core PRIVATE ${TORCH_CXX_FLAGS})
+        endif()
+    endif()
+
     if(SKBUILD)
         # scikit-build-core controls the output directory
         install(TARGETS _ivit_core LIBRARY DESTINATION .)
         install(TARGETS ivit LIBRARY DESTINATION .)
+        if(IVIT_USE_TORCH)
+            install(TARGETS _ivit_train_core LIBRARY DESTINATION .)
+            install(TARGETS ivit_train LIBRARY DESTINATION .)
+        endif()
     else()
         set_target_properties(_ivit_core PROPERTIES
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/ivit
         )
+        if(IVIT_USE_TORCH)
+            set_target_properties(_ivit_train_core PROPERTIES
+                LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/ivit
+            )
+        endif()
     endif()
 endif()
 
@@ -275,6 +386,17 @@ if(IVIT_BUILD_TESTS)
         add_executable(test_inference tests/cpp/test_inference.cpp)
         target_link_libraries(test_inference PRIVATE ivit GTest::gtest_main)
         add_test(NAME test_inference COMMAND test_inference)
+
+        # Training module tests
+        if(IVIT_USE_TORCH)
+            add_executable(test_train_dataset tests/cpp/test_train_dataset.cpp)
+            target_link_libraries(test_train_dataset PRIVATE ivit_train GTest::gtest_main)
+            add_test(NAME test_train_dataset COMMAND test_train_dataset)
+
+            add_executable(test_train_augmentation tests/cpp/test_train_augmentation.cpp)
+            target_link_libraries(test_train_augmentation PRIVATE ivit_train GTest::gtest_main)
+            add_test(NAME test_train_augmentation COMMAND test_train_augmentation)
+        endif()
     else()
         message(STATUS "Google Test not found, C++ tests disabled")
     endif()
@@ -320,6 +442,15 @@ install(TARGETS ivit
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+if(IVIT_USE_TORCH)
+    install(TARGETS ivit_train
+        EXPORT ivitTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 
 install(DIRECTORY include/ivit
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
@@ -439,6 +570,7 @@ message(STATUS "Backends:")
 message(STATUS "  OpenVINO:       ${IVIT_USE_OPENVINO}")
 message(STATUS "  TensorRT:       ${IVIT_USE_TENSORRT}")
 message(STATUS "  QNN:            ${IVIT_USE_QNN}")
+message(STATUS "  LibTorch:       ${IVIT_USE_TORCH}")
 message(STATUS "")
 message(STATUS "Components:")
 message(STATUS "  Python:         ${IVIT_BUILD_PYTHON}")
