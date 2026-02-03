@@ -29,7 +29,12 @@ void OpenVINORuntime::initialize() {
     if (initialized_) return;
 
     // Suppress internal OpenCL compiler warnings (e.g. "Failed to read file: /tmp/dep-*.d")
-    core_.set_property(ov::log::level(ov::log::Level::ERR));
+    // Note: Some plugins (e.g. GPU) may not support LOG_LEVEL, so ignore errors
+    try {
+        core_.set_property(ov::log::level(ov::log::Level::ERR));
+    } catch (...) {
+        // Ignore — plugin does not support this property
+    }
 
     // Enable model caching if cache directory is set
     if (!cache_dir_.empty()) {
