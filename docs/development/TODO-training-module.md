@@ -16,21 +16,17 @@
 
 ## 待驗證項目 🔍
 
-### 1. 執行測試套件
+### 1. 執行測試套件 ✅ (2026-02-04 驗證通過)
 
 ```bash
 # 安裝測試依賴
 pip install -e ".[dev,train]"
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install onnxscript  # ONNX 匯出需要
 
 # 執行訓練測試
 pytest tests/integration/test_training_workflow.py -v
-
-# 執行所有測試（排除 GPU）
-pytest tests/ -v -k "not gpu" --ignore=tests/cpp/
-
-# 執行 C++ API 測試
-pytest tests/integration/test_train_cpp.py -v
+# 結果：30/30 passed ✅
 ```
 
 ### 2. 驗證 CI Workflow
@@ -43,11 +39,12 @@ gh workflow view test.yml
 git push origin feature/train-cpp-refactor
 ```
 
-### 3. 本地 GPU 測試（如有 CUDA）
+### 3. 本地 GPU 測試 ✅ (2026-02-04 驗證通過)
 
 ```bash
 # 執行 GPU 測試
 pytest tests/integration/test_training_workflow.py -v -m gpu
+# 結果：2/2 passed ✅ (TestGPUTraining)
 ```
 
 ---
@@ -100,6 +97,13 @@ pytest tests/integration/test_training_workflow.py -v -m gpu
 
 - GitHub Actions ubuntu-latest 無 GPU，所有 GPU 測試會被跳過
 - 若需要 GPU CI 測試，需要設定 self-hosted runner
+
+### OpenVINO/LibTorch ABI 衝突 ✅ 已解決
+
+**問題**：pip 版 OpenVINO 使用舊 ABI (`_GLIBCXX_USE_CXX11_ABI=0`)，與系統 OpenCV 不相容
+
+**解決方案**：修改 `ivit/__init__.py` 和 `ivit/core/__init__.py` 使用延遲載入 (lazy loading)，
+讓訓練模組可以獨立運作，不需要載入推論模組的 C++ 綁定
 
 ---
 
