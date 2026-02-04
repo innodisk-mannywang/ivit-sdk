@@ -61,10 +61,9 @@ tensorrt = [
 ]
 # Feature dependencies
 zoo = [
-    "ultralytics>=8.0",
     "torch>=2.0",
     "torchvision>=0.15",
-    "onnxscript>=0.1",
+    "onnx>=1.14",
 ]
 train = [
     "torch>=2.0",
