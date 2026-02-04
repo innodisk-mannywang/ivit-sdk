@@ -13,10 +13,10 @@ Usage:
 Examples:
     $ ivit info
     $ ivit devices
-    $ ivit benchmark models/yolov8n.onnx --device cuda:0
-    $ ivit predict models/yolov8n.onnx image.jpg --conf 0.5
-    $ ivit convert models/yolov8n.onnx -f openvino -o models/
-    $ ivit serve models/yolov8n.onnx --port 8080
+    $ ivit benchmark models/yolox-s.onnx --device cuda:0
+    $ ivit predict models/yolox-s.onnx image.jpg --conf 0.5
+    $ ivit convert models/yolox-s.onnx -f openvino -o models/
+    $ ivit serve models/yolox-s.onnx --port 8080
 """
 
 import argparse
@@ -457,25 +457,52 @@ def _convert_to_onnx(input_path: Path, output_dir: Path):
         print(f"  Copied to: {output_path}")
         return
 
-    if input_path.suffix.lower() == '.pt':
+    if input_path.suffix.lower() == '.pt' or input_path.suffix.lower() == '.pth':
+        # Generic PyTorch model conversion
         try:
-            from ultralytics import YOLO
+            import torch
+
             print("Converting PyTorch model to ONNX...")
-            model = YOLO(str(input_path))
-            model.export(format="onnx")
-            # Move to output dir
-            onnx_path = input_path.with_suffix('.onnx')
-            if onnx_path.exists():
-                import shutil
-                output_path = output_dir / onnx_path.name
-                shutil.move(str(onnx_path), str(output_path))
-                print(f"  Created: {output_path}")
+            print("  Loading model...")
+
+            # Try to load as a complete model first
+            try:
+                model = torch.load(str(input_path), map_location="cpu")
+                if isinstance(model, dict):
+                    # State dict - need model architecture
+                    print("Error: Cannot convert state dict without model architecture")
+                    print("Hint: For YOLOX models, use: ivit zoo download yolox-s")
+                    print("Hint: For torchvision models, use: ivit zoo download resnet50")
+                    sys.exit(1)
+            except Exception as e:
+                print(f"Error loading model: {e}")
+                sys.exit(1)
+
+            model.eval()
+
+            # Determine input size (default to 640x640 for detection, 224x224 for classification)
+            h, w = 640, 640
+            dummy_input = torch.randn(1, 3, h, w)
+
+            output_path = output_dir / input_path.with_suffix('.onnx').name
+
+            torch.onnx.export(
+                model,
+                dummy_input,
+                str(output_path),
+                opset_version=11,
+                input_names=["input"],
+                output_names=["output"],
+            )
+            print(f"  Created: {output_path}")
+
         except ImportError:
-            print("Error: Ultralytics required for .pt conversion")
-            print("Install with: pip install ultralytics")
+            print("Error: PyTorch required for .pt/.pth conversion")
+            print("Install with: pip install torch")
             sys.exit(1)
     else:
         print(f"Error: Unsupported input format: {input_path.suffix}")
+        print("Supported formats: .onnx, .pt, .pth")
         sys.exit(1)
 
     print()
@@ -676,24 +703,30 @@ def cmd_serve(args):
 
 def cmd_zoo(args):
     """Model Zoo commands."""
-    import ivit
+    # Import directly from registry to avoid C++ binding requirement
+    from ivit.zoo.registry import (
+        list_models,
+        search,
+        get_model_info,
+        download,
+        print_models,
+    )
 
     if args.zoo_command == "list":
         task = args.task
-        from ivit.zoo.registry import print_models
         print_models(task)
     elif args.zoo_command == "search":
-        results = ivit.zoo.search(args.query)
+        results = search(args.query)
         if results:
             print(f"\nFound {len(results)} model(s):")
             for name in results:
-                info = ivit.zoo.get_model_info(name)
+                info = get_model_info(name)
                 print(f"  {name:<20} {info.task:<12} {info.description[:40]}")
         else:
             print(f"No models found for: {args.query}")
     elif args.zoo_command == "info":
         try:
-            info = ivit.zoo.get_model_info(args.name)
+            info = get_model_info(args.name)
             print()
             print(f"Model: {info.name}")
             print(f"Task: {info.task}")
@@ -702,6 +735,7 @@ def cmd_zoo(args):
             print(f"Classes: {info.num_classes}")
             print(f"Formats: {', '.join(info.formats)}")
             print(f"Source: {info.source}")
+            print(f"License: {info.license}")
             if info.metrics:
                 print(f"Metrics: {info.metrics}")
             if info.tags:
@@ -711,7 +745,7 @@ def cmd_zoo(args):
             print(f"Error: {e}")
     elif args.zoo_command == "download":
         print(f"Downloading {args.name}...")
-        path = ivit.zoo.download(args.name, format=args.format)
+        path = download(args.name, format=args.format)
         print(f"Downloaded to: {path}")
 
 
@@ -734,8 +768,8 @@ Examples:
   ivit export model.onnx -o out.xml -t intel_gpu  Export for Intel GPU
   ivit serve model.onnx --port 8080            Start inference server
   ivit zoo list                                List Model Zoo models
-  ivit zoo search yolo                         Search models
-  ivit zoo download yolov8n                    Download model
+  ivit zoo search yolox                        Search models
+  ivit zoo download yolox-s                    Download model
         """
     )
 

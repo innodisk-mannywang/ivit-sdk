@@ -35,7 +35,10 @@ if _os.path.exists(_libivit_path):
     except OSError:
         pass
 
-# C++ bindings are required
+# C++ bindings - optional for some use cases (e.g., zoo commands)
+_CPP_AVAILABLE = False
+_CPP_ERROR = None
+
 try:
     from ._ivit_core import (
         # Enums
@@ -96,44 +99,63 @@ try:
         DeviceNotFoundError,
         UnsupportedFormatError,
     )
+    _CPP_AVAILABLE = True
 except ImportError as e:
-    raise ImportError(
-        "iVIT-SDK requires C++ bindings. "
-        "Please build and install with: pip install -e . "
-        f"(Original error: {e})"
-    ) from e
+    _CPP_ERROR = str(e)
+    # Don't raise - allow package to load for zoo/CLI functionality
+    # Functions that require C++ will check _CPP_AVAILABLE
 
 
 def is_cpp_available():
-    """Check if C++ bindings are available. Always True in this version."""
-    return True
+    """Check if C++ bindings are available."""
+    return _CPP_AVAILABLE
+
+
+def _require_cpp():
+    """Raise error if C++ bindings are not available."""
+    if not _CPP_AVAILABLE:
+        raise ImportError(
+            "This feature requires C++ bindings. "
+            "Please build and install with: pip install -e . "
+            f"(Original error: {_CPP_ERROR})"
+        )
 
 
 def get_runtime_info():
     """Get runtime information about iVIT SDK."""
     return {
         "version": __version__,
-        "cpp_bindings": True,
-        "mode": "C++ accelerated",
+        "cpp_bindings": _CPP_AVAILABLE,
+        "mode": "C++ accelerated" if _CPP_AVAILABLE else "Python only (limited)",
     }
 
 
 # Import extended Python exceptions (supplement C++ exceptions)
-from .core.exceptions import (
-    BackendNotAvailableError,
-    InvalidInputError,
-    ModelNotLoadedError,
-    ConfigurationError,
-    ModelConversionError,
-    ResourceExhaustedError,
-    UnsupportedOperationError,
-    wrap_error,
-)
+try:
+    from .core.exceptions import (
+        BackendNotAvailableError,
+        InvalidInputError,
+        ModelNotLoadedError,
+        ConfigurationError,
+        ModelConversionError,
+        ResourceExhaustedError,
+        UnsupportedOperationError,
+        wrap_error,
+    )
+except ImportError:
+    pass
 
-# Import devices module for device discovery
-from .devices import devices, Device, D
+# Import devices module for device discovery (requires C++ bindings)
+devices = None
+Device = None
+D = None
+if _CPP_AVAILABLE:
+    try:
+        from .devices import devices, Device, D
+    except ImportError:
+        pass
 
-# Import Model Zoo
+# Import Model Zoo (works without C++ bindings)
 from . import zoo
 
 # Import Training module (lazy load to avoid torch dependency)
@@ -161,9 +183,11 @@ def load(
         Model: Loaded model ready for inference
 
     Examples:
-        >>> model = ivit.load("yolov8n.onnx")
+        >>> model = ivit.load("yolox-s.onnx")
         >>> results = model.predict("image.jpg")
     """
+    _require_cpp()
+
     if hasattr(device, 'id'):
         device = device.id
     elif device == "auto":
