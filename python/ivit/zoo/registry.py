@@ -23,7 +23,8 @@ class ModelInfo:
     input_size: tuple  # (H, W)
     num_classes: int
     formats: List[str]  # Available formats: onnx, openvino, tensorrt
-    url: Optional[str] = None
+    url: Optional[str] = None        # 原始框架權重 (.pth, .pdparams)
+    onnx_url: Optional[str] = None   # 預轉換 ONNX 下載 URL
     source: str = "torchvision"  # torchvision, megvii, paddlepaddle, mmpose, custom
     license: str = "Apache-2.0"
     metrics: Dict[str, float] = field(default_factory=dict)
@@ -44,6 +45,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=80,
         formats=["onnx", "openvino", "tensorrt"],
         url="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.pth",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/yolox-nano.onnx",
         source="megvii",
         license="Apache-2.0",
         metrics={"mAP50-95": 25.8, "params_m": 0.91, "flops_g": 1.08},
@@ -57,6 +59,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=80,
         formats=["onnx", "openvino", "tensorrt"],
         url="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.pth",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/yolox-tiny.onnx",
         source="megvii",
         license="Apache-2.0",
         metrics={"mAP50-95": 32.8, "params_m": 5.06, "flops_g": 6.45},
@@ -70,6 +73,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=80,
         formats=["onnx", "openvino", "tensorrt"],
         url="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.pth",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/yolox-s.onnx",
         source="megvii",
         license="Apache-2.0",
         metrics={"mAP50-95": 40.5, "params_m": 9.0, "flops_g": 26.8},
@@ -83,6 +87,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=80,
         formats=["onnx", "openvino", "tensorrt"],
         url="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_m.pth",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/yolox-m.onnx",
         source="megvii",
         license="Apache-2.0",
         metrics={"mAP50-95": 46.9, "params_m": 25.3, "flops_g": 73.8},
@@ -96,6 +101,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=80,
         formats=["onnx", "openvino", "tensorrt"],
         url="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_l.pth",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/yolox-l.onnx",
         source="megvii",
         license="Apache-2.0",
         metrics={"mAP50-95": 49.7, "params_m": 54.2, "flops_g": 155.6},
@@ -113,6 +119,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=80,
         formats=["onnx", "openvino", "tensorrt"],
         url="https://bj.bcebos.com/v1/paddledet/models/rtdetr_r50vd_6x_coco.pdparams",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/rtdetr-l.onnx",
         source="paddlepaddle",
         license="Apache-2.0",
         metrics={"mAP50-95": 53.0, "params_m": 32.0},
@@ -126,6 +133,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=80,
         formats=["onnx", "openvino", "tensorrt"],
         url="https://bj.bcebos.com/v1/paddledet/models/rtdetr_r101vd_6x_coco.pdparams",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/rtdetr-x.onnx",
         source="paddlepaddle",
         license="Apache-2.0",
         metrics={"mAP50-95": 54.8, "params_m": 67.0},
@@ -287,6 +295,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=17,  # COCO keypoints
         formats=["onnx", "openvino", "tensorrt"],
         url="https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-s_simcc-aic-coco_pt-aic-coco_420e-256x192-8edcf0d7_20230127.pth",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/rtmpose-s.onnx",
         source="mmpose",
         license="Apache-2.0",
         metrics={"AP": 72.2, "params_m": 5.5},
@@ -300,6 +309,7 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         num_classes=17,  # COCO keypoints
         formats=["onnx", "openvino", "tensorrt"],
         url="https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-m_simcc-aic-coco_pt-aic-coco_420e-256x192-63eb25f7_20230126.pth",
+        onnx_url="https://github.com/innodisk-mannywang/ivit-sdk/releases/download/models-v1.0/rtmpose-m.onnx",
         source="mmpose",
         license="Apache-2.0",
         metrics={"AP": 75.3, "params_m": 13.6},
@@ -404,6 +414,7 @@ def download(
     name: str,
     format: str = "onnx",
     force: bool = False,
+    from_source: bool = False,
 ) -> Path:
     """
     Download model from zoo.
@@ -412,18 +423,17 @@ def download(
         name: Model name
         format: Model format (onnx, openvino, tensorrt)
         force: Force re-download
+        from_source: If True, download original weights and convert locally
+            instead of using pre-converted ONNX files
 
     Returns:
         Path to downloaded model
 
     Examples:
-        >>> path = ivit.zoo.download("yolov8n")
+        >>> path = ivit.zoo.download("yolox-s")
         >>> print(path)
-        /home/user/.cache/ivit/models/yolov8n.onnx
+        /home/user/.cache/ivit/models/yolox-s.onnx
     """
-    import requests
-    from tqdm import tqdm
-
     info = get_model_info(name)
 
     if format not in info.formats:
@@ -446,6 +456,10 @@ def download(
     if model_path.exists() and not force:
         logger.info(f"Model already cached: {model_path}")
         return model_path
+
+    # Direct ONNX download: if format is onnx, onnx_url exists, and not from_source
+    if format == "onnx" and info.onnx_url and not from_source:
+        return _download_onnx_direct(name, info.onnx_url, model_path, force)
 
     # Route to appropriate exporter based on source
     if info.source == "megvii":
@@ -660,6 +674,47 @@ def _download_file(url: str, dest_path: Path, desc: str = None) -> Path:
     return dest_path
 
 
+# Minimum expected ONNX file size (1 KB) to catch corrupted/empty downloads
+_MIN_ONNX_SIZE = 1024
+
+
+def _download_onnx_direct(name: str, onnx_url: str, onnx_path: Path, force: bool = False) -> Path:
+    """Download a pre-converted ONNX file directly from a URL.
+
+    Args:
+        name: Model name (for display purposes)
+        onnx_url: URL to the pre-converted ONNX file
+        onnx_path: Local path to save the ONNX file
+        force: Force re-download even if cached
+
+    Returns:
+        Path to the downloaded ONNX file
+
+    Raises:
+        RuntimeError: If the download fails or the file is too small
+    """
+    if onnx_path.exists() and not force:
+        logger.info(f"Model already cached: {onnx_path}")
+        return onnx_path
+
+    onnx_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Downloading pre-converted ONNX for {name}...")
+    _download_file(onnx_url, onnx_path, desc=f"{name}.onnx")
+
+    # Basic validation: check file size
+    file_size = onnx_path.stat().st_size
+    if file_size < _MIN_ONNX_SIZE:
+        onnx_path.unlink()
+        raise RuntimeError(
+            f"Downloaded ONNX file is too small ({file_size} bytes), "
+            f"possibly corrupted or unavailable. URL: {onnx_url}"
+        )
+
+    logger.info(f"Downloaded pre-converted ONNX: {onnx_path} ({file_size / 1024 / 1024:.1f} MB)")
+    return onnx_path
+
+
 # YOLOX model name to config mapping
 _YOLOX_MODEL_MAP = {
     "yolox-nano": ("yolox_nano", 0.33, 0.25),  # depth, width
@@ -809,22 +864,12 @@ def _export_rtdetr_onnx(name: str, onnx_path: Path, info: ModelInfo, force: bool
 
 
 # RTMPose model configurations
-# Note: ONNX files from OpenMMLab mmdeploy releases
 _RTMPOSE_MODEL_MAP = {
     "rtmpose-s": {
         "config": "rtmpose-s_8xb256-420e_coco-256x192",
-        # Alternative URLs for pre-converted ONNX
-        "onnx_urls": [
-            "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-s_simcc-aic-coco_pt-aic-coco_420e-256x192-fcb2599b_20230126.pth",
-        ],
-        "requires_conversion": True,
     },
     "rtmpose-m": {
         "config": "rtmpose-m_8xb256-420e_coco-256x192",
-        "onnx_urls": [
-            "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-m_simcc-aic-coco_pt-aic-coco_420e-256x192-63eb25f7_20230126.pth",
-        ],
-        "requires_conversion": True,
     },
 }
 

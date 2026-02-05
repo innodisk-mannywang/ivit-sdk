@@ -740,12 +740,17 @@ def cmd_zoo(args):
                 print(f"Metrics: {info.metrics}")
             if info.tags:
                 print(f"Tags: {', '.join(info.tags)}")
+            if info.onnx_url:
+                print(f"ONNX download: Direct (pre-converted)")
+            else:
+                print(f"ONNX download: Requires conversion")
             print()
         except KeyError as e:
             print(f"Error: {e}")
     elif args.zoo_command == "download":
+        from_source = getattr(args, "from_source", False)
         print(f"Downloading {args.name}...")
-        path = download(args.name, format=args.format)
+        path = download(args.name, format=args.format, from_source=from_source)
         print(f"Downloaded to: {path}")
 
 
@@ -850,6 +855,8 @@ Examples:
     zoo_download_parser = zoo_subparsers.add_parser("download", help="Download model")
     zoo_download_parser.add_argument("name", help="Model name")
     zoo_download_parser.add_argument("-f", "--format", default="onnx", help="Format (default: onnx)")
+    zoo_download_parser.add_argument("--from-source", action="store_true",
+                                     help="Download original weights and convert locally instead of using pre-converted ONNX")
 
     zoo_parser.set_defaults(func=cmd_zoo)
 
