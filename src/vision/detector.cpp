@@ -61,6 +61,8 @@ Detector::Detector(
         model_type_ = "yolov5";
     } else if (name_lower.find("yolov7") != std::string::npos) {
         model_type_ = "yolov7";
+    } else if (name_lower.find("yolox") != std::string::npos) {
+        model_type_ = "yolox";
     } else if (name_lower.find("ssd") != std::string::npos) {
         model_type_ = "ssd";
     } else if (name_lower.find("fasterrcnn") != std::string::npos ||
@@ -278,12 +280,14 @@ cv::Mat Detector::preprocess(
     cv::Mat letterbox(target_h, target_w, CV_8UC3, cv::Scalar(114, 114, 114));
     resized.copyTo(letterbox(cv::Rect(pad_w, pad_h, new_w, new_h)));
 
-    // Convert BGR to RGB
-    cv::cvtColor(letterbox, letterbox, cv::COLOR_BGR2RGB);
-
-    // Convert to float and normalize to [0, 1]
+    // YOLOX expects BGR [0, 255]; other models expect RGB [0, 1]
     cv::Mat float_img;
-    letterbox.convertTo(float_img, CV_32F, 1.0 / 255.0);
+    if (model_type_ == "yolox") {
+        letterbox.convertTo(float_img, CV_32F);
+    } else {
+        cv::cvtColor(letterbox, letterbox, cv::COLOR_BGR2RGB);
+        letterbox.convertTo(float_img, CV_32F, 1.0 / 255.0);
+    }
 
     // Convert to NCHW format
     int h = float_img.rows;
