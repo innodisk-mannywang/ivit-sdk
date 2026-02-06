@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <chrono>
+#include <filesystem>
 #include <iomanip>
 #include <unistd.h>
 #include <opencv2/opencv.hpp>
@@ -165,13 +166,15 @@ void run_detection(const std::string& model_path,
         if (!output_path.empty()) {
             cv::Mat vis = results.visualize(image);
             cv::imwrite(output_path, vis);
-            std::cout << "\nVisualization saved to: " << output_path << "\n";
+            std::cout << "\nVisualization saved to: "
+                      << std::filesystem::absolute(output_path).string() << "\n";
         }
 
         // Save JSON results
         std::string json_path = output_path.empty() ? "detections.json" : output_path + ".json";
         results.save(json_path, "json");
-        std::cout << "Results saved to: " << json_path << "\n";
+        std::cout << "Results saved to: "
+                  << std::filesystem::absolute(json_path).string() << "\n";
 
     } catch (const std::exception& e) {
         std::cerr << "Detection error: " << e.what() << "\n";

@@ -377,6 +377,21 @@ Results Detector::postprocess_yolo(
         num_classes = num_values - 5;  // YOLOv5: 4 bbox + 1 obj_conf + num_classes
     }
 
+    // YOLOX grid decode table: strides [8, 16, 32] → grids [80, 40, 20] for 640
+    bool is_yolox = (model_type_ == "yolox" && !is_yolov8_format);
+    struct StrideLevel { int grid_w; int offset; int stride; };
+    std::vector<StrideLevel> stride_levels;
+    if (is_yolox) {
+        static const int strides[] = {8, 16, 32};
+        int cumulative = 0;
+        for (int s : strides) {
+            int gw = input_size_.width / s;
+            int gh = input_size_.height / s;
+            stride_levels.push_back({gw, cumulative, s});
+            cumulative += gh * gw;
+        }
+    }
+
     for (int i = 0; i < num_predictions; i++) {
         float cx, cy, w, h;
         float obj_conf = 1.0f;
@@ -391,7 +406,7 @@ Results Detector::postprocess_yolo(
             h = data[3 * num_predictions + i];
             class_offset = 4;
         } else {
-            // YOLOv5: [8400, 85]
+            // YOLOv5 / YOLOX: [8400, 85]
             const float* pred = data + i * num_values;
             cx = pred[0];
             cy = pred[1];
@@ -399,6 +414,29 @@ Results Detector::postprocess_yolo(
             h = pred[3];
             obj_conf = pred[4];
             class_offset = 5;
+
+            // YOLOX: decode grid-relative predictions to pixel coordinates
+            if (is_yolox) {
+                int stride = stride_levels.back().stride;
+                int grid_w = stride_levels.back().grid_w;
+                int local_idx = i;
+                for (size_t s = 0; s < stride_levels.size(); s++) {
+                    int next_offset = (s + 1 < stride_levels.size())
+                        ? stride_levels[s + 1].offset : num_predictions;
+                    if (i < next_offset) {
+                        stride = stride_levels[s].stride;
+                        grid_w = stride_levels[s].grid_w;
+                        local_idx = i - stride_levels[s].offset;
+                        break;
+                    }
+                }
+                int gx = local_idx % grid_w;
+                int gy = local_idx / grid_w;
+                cx = (cx + gx) * stride;
+                cy = (cy + gy) * stride;
+                w = std::exp(w) * stride;
+                h = std::exp(h) * stride;
+            }
 
             if (obj_conf < config.conf_threshold) continue;
         }
