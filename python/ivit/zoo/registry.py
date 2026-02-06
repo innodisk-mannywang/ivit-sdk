@@ -637,14 +637,26 @@ def _export_torchvision_onnx(name: str, onnx_path: Path, info: ModelInfo) -> Pat
                 export_params=True,
             )
     else:
-        torch.onnx.export(
-            model,
-            dummy,
-            str(onnx_path),
-            opset_version=18,
-            input_names=["input"],
-            output_names=output_names,
-        )
+        try:
+            torch.onnx.export(
+                model,
+                dummy,
+                str(onnx_path),
+                opset_version=11,
+                input_names=["input"],
+                output_names=output_names,
+                dynamo=False,  # Force legacy exporter (no onnxscript needed)
+            )
+        except TypeError:
+            # Older PyTorch versions don't have dynamo parameter
+            torch.onnx.export(
+                model,
+                dummy,
+                str(onnx_path),
+                opset_version=11,
+                input_names=["input"],
+                output_names=output_names,
+            )
 
     logger.info(f"Exported: {onnx_path}")
     return onnx_path
