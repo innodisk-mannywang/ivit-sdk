@@ -65,20 +65,30 @@ Classifier::Classifier(
     std_ = {0.229f, 0.224f, 0.225f};
 
     // Try to load labels
+    // Priority: 1) model built-in  2) {model_stem}.txt  3) labels.txt  4) IMAGENET_LABELS
     labels_ = model_->labels();
     if (labels_.empty()) {
-        // Try to load from file
         namespace fs = std::filesystem;
-        fs::path model_dir = fs::path(model_path).parent_path();
-        fs::path labels_path = model_dir / "labels.txt";
+        fs::path model_file = fs::path(model_path);
+        fs::path model_dir = model_file.parent_path();
 
-        if (fs::exists(labels_path)) {
-            std::ifstream file(labels_path);
-            std::string line;
-            while (std::getline(file, line)) {
-                if (!line.empty()) {
-                    labels_.push_back(line);
+        // Try model-specific label file (e.g. resnet18.onnx -> resnet18.txt)
+        fs::path stem_labels_path = model_file;
+        stem_labels_path.replace_extension(".txt");
+
+        // Try generic labels.txt in same directory
+        fs::path generic_labels_path = model_dir / "labels.txt";
+
+        for (const auto& lpath : {stem_labels_path, generic_labels_path}) {
+            if (fs::exists(lpath)) {
+                std::ifstream file(lpath);
+                std::string line;
+                while (std::getline(file, line)) {
+                    if (!line.empty()) {
+                        labels_.push_back(line);
+                    }
                 }
+                if (!labels_.empty()) break;
             }
         }
 

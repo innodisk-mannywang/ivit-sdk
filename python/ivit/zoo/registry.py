@@ -659,6 +659,19 @@ def _export_torchvision_onnx(name: str, onnx_path: Path, info: ModelInfo) -> Pat
             )
 
     logger.info(f"Exported: {onnx_path}")
+
+    # Save labels from weights metadata
+    try:
+        categories = weights_enum.meta.get("categories", [])
+        if categories:
+            labels_path = onnx_path.with_suffix(".txt")
+            with open(labels_path, "w") as f:
+                for cat in categories:
+                    f.write(cat + "\n")
+            logger.info(f"Saved {len(categories)} labels: {labels_path}")
+    except Exception:
+        pass
+
     return onnx_path
 
 
