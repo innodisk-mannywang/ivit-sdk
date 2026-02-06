@@ -35,6 +35,7 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 |------|------|----------|
 | build-essential | C++ 編譯器 (GCC 11+) | APT |
 | cmake | 建置系統 (3.18+) | APT |
+| ninja-build | Ninja 建置工具（Python 套件編譯需要）| APT |
 | pkg-config | 套件偵測 | APT |
 | libopencv-dev | OpenCV 4.5+ (含 dnn 模組) | APT |
 | libopenvino-dev | OpenVINO C++ Runtime | Intel APT |
@@ -54,7 +55,7 @@ iVIT-SDK (Innodisk Vision Intelligence Toolkit) 是一個統一的電腦視覺�
 
 ```bash
 sudo apt update
-sudo apt install build-essential cmake pkg-config libopencv-dev
+sudo apt install build-essential cmake ninja-build pkg-config libopencv-dev
 ```
 
 ### Step 2：安裝 Intel GPU Compute Runtime（iGPU 推論需要）
@@ -220,6 +221,14 @@ pip install -e ".[zoo]"
 
 > **注意**：Ubuntu 24.04 的系統 Python 不允許直接 `pip install`（PEP 668），必須使用 venv。
 > 之後每次開新 terminal 需先執行 `source .venv/bin/activate`。
+
+> **PATH 設定**：若安裝後出現 `WARNING: The script ivit is installed in '/home/xxx/.local/bin' which is not on PATH`，
+> 需將 `~/.local/bin` 加入 PATH：
+> ```bash
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+> source ~/.bashrc
+> ```
+> 使用 venv 的情況下不會有此問題。
 
 ### CMake 選項
 
