@@ -3,9 +3,13 @@
 iVIT-SDK Quickstart Example
 
 最簡單的使用範例，直接執行即可體驗 iVIT-SDK 的物件偵測功能。
+模型會自動從 Model Zoo 下載（預設使用 yolox-s）。
 
 Usage:
     python examples/python/01_quickstart.py
+
+    # 使用自訂模型
+    IVIT_MODEL_PATH=./my_model.onnx python examples/python/01_quickstart.py
 """
 
 import sys
@@ -21,6 +25,21 @@ import ivit
 from ivit.vision import Detector
 import cv2
 
+# Default model from zoo
+DEFAULT_MODEL = "yolox-s"
+
+
+def _ensure_model(model_name):
+    """Download model from zoo if not already cached, return path."""
+    from ivit.zoo.registry import download, _get_cache_dir
+    cache_dir = _get_cache_dir()
+    model_path = cache_dir / f"{model_name}.onnx"
+    if model_path.exists():
+        return str(model_path)
+    print(f"\nModel not found locally, downloading {model_name} from Model Zoo...")
+    path = download(model_name, format="onnx")
+    return str(path)
+
 
 def main():
     # Print version and available devices
@@ -30,13 +49,10 @@ def main():
         print(f"  - {d.id}: {d.name} [{d.backend}]")
 
     # Model and image paths
-    # NOTE: Update model_path to point to your own ONNX/OpenVINO/TensorRT model file.
-    # You can download a YOLOv8n ONNX model from https://github.com/ultralytics/ultralytics
-    # or use: python -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx')"
-    model_path = os.environ.get(
-        "IVIT_MODEL_PATH",
-        os.path.join(PROJECT_ROOT, "models", "onnx", "yolov8n.onnx"),
-    )
+    model_path = os.environ.get("IVIT_MODEL_PATH")
+    if model_path is None:
+        model_path = _ensure_model(DEFAULT_MODEL)
+
     image_path = os.environ.get(
         "IVIT_IMAGE_PATH",
         os.path.join(PROJECT_ROOT, "examples", "data", "images", "bus.jpg"),

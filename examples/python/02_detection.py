@@ -6,20 +6,23 @@ Demonstrates object detection using the iVIT-SDK Python bindings.
 Supports multiple backends (TensorRT, OpenVINO).
 
 Usage:
+    # Download model first
+    ivit zoo download yolox-s
+
     # Run from project root
     python examples/python/02_detection.py \
-        -m models/onnx/yolov8n.onnx \
+        -m ~/.cache/ivit/models/yolox-s.onnx \
         -i examples/data/images/bus.jpg
 
     # With specific device
     python examples/python/02_detection.py \
-        -m models/onnx/yolov8n.onnx \
+        -m ~/.cache/ivit/models/yolox-s.onnx \
         -i examples/data/images/bus.jpg \
         -d cuda:0
 
     # Benchmark mode
     python examples/python/02_detection.py \
-        -m models/onnx/yolov8n.onnx \
+        -m ~/.cache/ivit/models/yolox-s.onnx \
         -i examples/data/images/bus.jpg \
         -d cuda:0 -b -n 100
 """

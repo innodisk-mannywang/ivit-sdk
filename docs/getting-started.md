@@ -333,15 +333,18 @@ cv::imwrite("segmentation.jpg", overlay);
 ```python
 import ivit
 
+# 下載模型（首次使用）
+ivit.zoo.download("yolox-s")
+
 # 物件偵測
-detector = ivit.Detector("yolov8n.onnx", device="npu")
+detector = ivit.Detector("~/.cache/ivit/models/yolox-s.onnx", device="npu")
 results = detector.predict("image.jpg")
 
 for det in results.detections:
     print(f"{det.label}: {det.confidence:.2%}")
 
 # 影像分類
-classifier = ivit.Classifier("resnet50.onnx", device="cpu")
+classifier = ivit.Classifier("~/.cache/ivit/models/resnet50.onnx", device="cpu")
 results = classifier.predict("image.jpg", top_k=5)
 
 for cls in results.classifications:
@@ -561,7 +564,7 @@ Detector detector("model.onnx", config.device, config);
 |------|------|----------|
 | `FP32` | 32 位元浮點 | 最高精度，NPU/CPU 推薦直接使用 |
 | `FP16` | 16 位元浮點 | 縮小模型檔案（約 50%），適合儲存與部署 |
-| `INT8` | 8 位元整數 | 最高效能（需校準資料集） |
+| `INT8` | 8 位元整數 | 最高效能（需校準資料集），可透過 `ivit convert -p int8 -c` 轉換 |
 
 ```cpp
 LoadConfig config;
@@ -581,6 +584,9 @@ ivit convert model.onnx --format openvino
 
 # ONNX → OpenVINO IR（FP16 壓縮）
 ivit convert model.onnx --format openvino --precision fp16
+
+# ONNX → OpenVINO IR（INT8 量化，需指定校準圖片資料夾）
+ivit convert model.onnx --format openvino --precision int8 -c ./calibration_images/
 
 # ONNX → TensorRT Engine
 ivit convert model.onnx --format tensorrt --precision fp16
@@ -617,10 +623,38 @@ ivit convert model.onnx --format openvino --precision fp16
 |------|----------|----------|------|
 | `fp32` | ✅ | ✅ | 預設精度 |
 | `fp16` | ✅ | ✅ | 縮小模型檔案，不影響推論速度（見下方說明） |
-| `int8` | ❌ | ✅（需校準） | OpenVINO INT8 需使用 [NNCF](https://github.com/openvinotoolkit/nncf) 工具 |
+| `int8` | ✅（需校準） | ✅（需校準） | 最高效能，需提供校準圖片資料夾 |
 
-> **INT8 限制**：OpenVINO 的 INT8 量化需要校準資料集，無法透過 `ivit convert` 直接轉換。
-> 請使用 [NNCF toolkit](https://github.com/openvinotoolkit/nncf) 進行 INT8 量化。
+#### OpenVINO INT8 量化
+
+`ivit convert` 支援透過 `-p int8 -c <校準圖片資料夾>` 直接進行 OpenVINO INT8 量化，底層使用 [NNCF](https://github.com/openvinotoolkit/nncf) 工具。
+
+**安裝量化依賴：**
+
+```bash
+pip install -e ".[quantize]"
+# 或單獨安裝
+pip install nncf>=2.7 openvino>=2024.0
+```
+
+**使用方式：**
+
+```bash
+# 準備校準圖片（建議 50~300 張，與實際推論場景相似的圖片）
+ls ./calibration_images/
+# image001.jpg  image002.jpg  image003.png  ...
+
+# 執行 INT8 量化
+ivit convert model.onnx -f openvino -p int8 -c ./calibration_images/
+```
+
+**注意事項：**
+
+- 校準圖片資料夾只掃描頂層目錄，支援 jpg/jpeg/png/bmp/webp/tiff 格式
+- 超過 300 張時會自動隨機取樣 300 張（固定 seed 確保可重現）
+- 前處理方式：resize 到模型輸入尺寸 → float32 [0,1] 正規化
+- 量化使用 NNCF `MIXED` preset，平衡精度與效能
+- INT8 量化完全在 Python 端執行，不需要 C++ binding
 
 #### FP16 轉換效能說明
 
@@ -748,39 +782,32 @@ Detector detector("model.onnx", "npu", config);
 | `02_classification.py` | 影像分類範例 |
 | `02_segmentation.py` | 語意分割範例 |
 
-Python 範例需要先下載模型。有兩種方式：
+Python 範例使用 Model Zoo 的模型。`01_quickstart.py` 會自動下載模型，其他範例需先手動下載。
 
-**方式 1：使用環境變數指定模型路徑（推薦）**
-
-```bash
-# 下載模型到 zoo 快取目錄
-ivit zoo download yolov8n
-
-# 透過環境變數指定模型路徑
-IVIT_MODEL_PATH=~/.cache/ivit/models/yolov8n.onnx python examples/python/01_quickstart.py
-```
-
-**方式 2：將模型放到範例預設路徑**
+**快速入門（自動下載模型）：**
 
 ```bash
-mkdir -p models/onnx
-ivit zoo download yolov8n
-cp ~/.cache/ivit/models/yolov8n.onnx models/onnx/
+# 直接執行，模型會自動從 Model Zoo 下載（預設 yolox-s）
 python examples/python/01_quickstart.py
+
+# 或使用自訂模型
+IVIT_MODEL_PATH=./my_model.onnx python examples/python/01_quickstart.py
 ```
+
+**其他範例（需先下載模型）：**
 
 ```bash
 # 物件偵測（使用 NPU）
-ivit zoo download yolov8n
+ivit zoo download yolox-s
 python examples/python/02_detection.py \
-    -m ~/.cache/ivit/models/yolov8n.onnx \
+    -m ~/.cache/ivit/models/yolox-s.onnx \
     -i examples/data/images/bus.jpg \
     -d npu
 
 # 影像分類（使用 NPU）
-ivit zoo download yolov8n-cls
+ivit zoo download resnet50
 python examples/python/02_classification.py \
-    -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+    -m ~/.cache/ivit/models/resnet50.onnx \
     -i examples/data/images/bus.jpg \
     -d npu
 

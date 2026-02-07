@@ -70,6 +70,10 @@ train = [
     "torchvision>=0.15",
     "albumentations>=1.3",
 ]
+quantize = [
+    "nncf>=2.7",
+    "openvino>=2024.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -81,7 +85,7 @@ dev = [
 ]
 # Combined installations
 all = [
-    "ivit-sdk[openvino,tensorrt,zoo,train,dev]",
+    "ivit-sdk[openvino,tensorrt,zoo,train,quantize,dev]",
 ]
 # Alias for backward compatibility
 cuda = [

@@ -272,6 +272,7 @@ def cmd_convert(args):
     output_format = args.format.lower()
     output_dir = Path(args.output) if args.output else Path(".")
     precision = args.precision
+    calibration_data = args.calibration_data
 
     print()
     print("=" * 60)
@@ -284,6 +285,21 @@ def cmd_convert(args):
     print(f"Precision: {precision}")
     print()
 
+    # INT8 validation
+    if precision == "int8" and output_format == "openvino":
+        if calibration_data is None:
+            print("Error: INT8 quantization requires calibration data.")
+            print("Usage: ivit convert model.onnx -f openvino -p int8 -c ./calibration_images/")
+            sys.exit(1)
+        cal_path = Path(calibration_data)
+        if not cal_path.exists() or not cal_path.is_dir():
+            print(f"Error: Calibration data path is not a valid directory: {calibration_data}")
+            sys.exit(1)
+
+    if calibration_data is not None and precision != "int8":
+        print(f"Warning: --calibration-data is only used with INT8 precision, ignoring.")
+        print()
+
     # Verify input exists
     input_path = Path(model_path)
     if not input_path.exists():
@@ -295,7 +311,8 @@ def cmd_convert(args):
 
     # Convert based on format
     if output_format == "openvino":
-        _convert_to_openvino(input_path, output_dir, precision)
+        _convert_to_openvino(input_path, output_dir, precision,
+                             calibration_data_path=calibration_data)
     elif output_format == "tensorrt":
         _convert_to_tensorrt(input_path, output_dir, precision)
     elif output_format == "onnx":
@@ -309,8 +326,171 @@ def cmd_convert(args):
     print("=" * 60)
 
 
-def _convert_to_openvino(input_path: Path, output_dir: Path, precision: str):
+def _get_onnx_input_shape(input_path: Path):
+    """Get input shape (H, W) from an ONNX model.
+
+    Returns (H, W) tuple or None if shape cannot be determined.
+    """
+    # Strategy 1: Try onnx package
+    try:
+        import onnx
+        model = onnx.load(str(input_path))
+        inp = model.graph.input[0]
+        dims = inp.type.tensor_type.shape.dim
+        if len(dims) == 4:
+            h = dims[2].dim_value
+            w = dims[3].dim_value
+            if h > 0 and w > 0:
+                return (h, w)
+    except Exception:
+        pass
+
+    # Strategy 2: Try OpenVINO read_model
+    try:
+        import openvino as ov
+        core = ov.Core()
+        model = core.read_model(str(input_path))
+        shape = model.input(0).get_partial_shape()
+        if shape.rank.get_length() == 4:
+            h = shape[2].get_length()
+            w = shape[3].get_length()
+            if h > 0 and w > 0:
+                return (h, w)
+    except Exception:
+        pass
+
+    return None
+
+
+def _load_calibration_images(cal_dir: Path, input_hw):
+    """Load and preprocess calibration images from a directory.
+
+    Args:
+        cal_dir: Directory containing calibration images.
+        input_hw: Tuple of (H, W) for model input size.
+
+    Returns:
+        List of np.ndarray in CHW float32 [0,1] format (no batch dim).
+    """
+    import numpy as np
+    import cv2
+    import random
+
+    IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff'}
+    MAX_IMAGES = 300
+
+    h, w = input_hw
+
+    # Collect image paths (top-level only, no recursion)
+    image_paths = sorted([
+        p for p in cal_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+    ])
+
+    if not image_paths:
+        print(f"Error: No images found in {cal_dir}")
+        print(f"  Supported formats: {', '.join(IMAGE_EXTENSIONS)}")
+        sys.exit(1)
+
+    # Sample if too many
+    if len(image_paths) > MAX_IMAGES:
+        total = len(image_paths)
+        rng = random.Random(42)
+        image_paths = rng.sample(image_paths, MAX_IMAGES)
+        print(f"  Sampled {MAX_IMAGES} images from {total} (seed=42)")
+
+    print(f"  Loading {len(image_paths)} calibration images...")
+
+    images = []
+    for img_path in image_paths:
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
+        img = cv2.resize(img, (w, h))
+        img = img.astype(np.float32) / 255.0
+        img = img.transpose(2, 0, 1)  # HWC -> CHW
+        images.append(img)
+
+    if not images:
+        print(f"Error: Could not read any valid images from {cal_dir}")
+        sys.exit(1)
+
+    print(f"  Loaded {len(images)} calibration images ({h}x{w})")
+    return images
+
+
+def _convert_to_openvino_int8(input_path: Path, output_dir: Path,
+                               calibration_data_path: str):
+    """Convert ONNX model to OpenVINO IR with INT8 quantization using NNCF."""
+    import numpy as np
+
+    # Check dependencies
+    try:
+        import openvino as ov
+    except ImportError:
+        print("Error: OpenVINO is required for INT8 quantization.")
+        print("Install with: pip install openvino>=2024.0")
+        sys.exit(1)
+
+    try:
+        import nncf
+    except ImportError:
+        print("Error: NNCF is required for INT8 quantization.")
+        print("Install with: pip install nncf>=2.7")
+        print("Or install all quantization dependencies: pip install -e '.[quantize]'")
+        sys.exit(1)
+
+    model_name = input_path.stem
+    output_xml = output_dir / f"{model_name}.xml"
+    output_bin = output_dir / f"{model_name}.bin"
+
+    print("Converting to OpenVINO IR with INT8 quantization...")
+    print()
+
+    # Get input shape
+    input_hw = _get_onnx_input_shape(input_path)
+    if input_hw is None:
+        input_hw = (640, 640)
+        print(f"  Warning: Could not determine input shape, using default {input_hw}")
+
+    # Load calibration images
+    cal_dir = Path(calibration_data_path)
+    cal_images = _load_calibration_images(cal_dir, input_hw)
+
+    # Convert ONNX to OpenVINO model
+    print("  Converting ONNX to OpenVINO model...")
+    ov_model = ov.convert_model(str(input_path))
+
+    # Prepare calibration dataset for NNCF
+    cal_data = [np.expand_dims(img, axis=0) for img in cal_images]
+    calibration_dataset = nncf.Dataset(cal_data)
+
+    # Quantize
+    print("  Running INT8 quantization (this may take a while)...")
+    quantized_model = nncf.quantize(
+        ov_model,
+        calibration_dataset,
+        preset=nncf.QuantizationPreset.MIXED,
+    )
+
+    # Save
+    ov.save_model(quantized_model, str(output_xml))
+
+    print()
+    print(f"  Created: {output_xml}")
+    print(f"  Created: {output_bin}")
+    print()
+    print("INT8 quantization complete!")
+
+
+def _convert_to_openvino(input_path: Path, output_dir: Path, precision: str,
+                          calibration_data_path=None):
     """Convert to OpenVINO IR format."""
+    # Route INT8 to dedicated quantization function
+    if precision.lower() == "int8" and calibration_data_path is not None:
+        _convert_to_openvino_int8(input_path, output_dir, calibration_data_path)
+        return
+
     import subprocess
     import shutil
 
@@ -357,11 +537,35 @@ def _convert_to_openvino(input_path: Path, output_dir: Path, precision: str):
         print("Conversion complete!")
         return
 
+    # Strategy 3: Try OpenVINO Python API (works with pip or APT python3-openvino)
+    try:
+        import openvino as ov
+
+        print("Converting to OpenVINO IR format (using Python API)...")
+        ov_model = ov.convert_model(str(input_path))
+
+        if precision.lower() == "fp16":
+            print("  Compressing to FP16...")
+            ov.save_model(ov_model, str(output_xml), compress_to_fp16=True)
+        else:
+            ov.save_model(ov_model, str(output_xml))
+
+        print(f"  Created: {output_xml}")
+        print(f"  Created: {output_bin}")
+        print()
+        print("Conversion complete!")
+        return
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Error: OpenVINO Python API conversion failed: {e}")
+        sys.exit(1)
+
     # No conversion tool available
     print("Error: OpenVINO conversion tools not found.")
     print("Install one of the following:")
     print("  pip install -e .                          # Build C++ binding")
-    print("  sudo apt install openvino-tools           # APT ovc tool")
+    print("  pip install openvino                      # Python API (convert_model)")
     sys.exit(1)
 
 
@@ -816,6 +1020,8 @@ Examples:
     convert_parser.add_argument("-o", "--output", default=".", help="Output directory (default: .)")
     convert_parser.add_argument("-p", "--precision", default="fp32", choices=["fp32", "fp16", "int8"],
                                 help="Precision (default: fp32)")
+    convert_parser.add_argument("-c", "--calibration-data", default=None,
+                                help="Calibration image folder for INT8 quantization")
     convert_parser.set_defaults(func=cmd_convert)
 
     # export command

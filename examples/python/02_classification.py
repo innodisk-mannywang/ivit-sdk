@@ -6,20 +6,23 @@ Demonstrates image classification using the iVIT-SDK Python bindings.
 Supports multiple backends (TensorRT, OpenVINO).
 
 Usage:
+    # Download model first
+    ivit zoo download resnet50
+
     # Run from project root
     python examples/python/02_classification.py \
-        -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+        -m ~/.cache/ivit/models/resnet50.onnx \
         -i examples/data/images/bus.jpg
 
     # With specific device
     python examples/python/02_classification.py \
-        -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+        -m ~/.cache/ivit/models/resnet50.onnx \
         -i examples/data/images/bus.jpg \
         -d npu
 
     # Benchmark mode
     python examples/python/02_classification.py \
-        -m ~/.cache/ivit/models/yolov8n-cls.onnx \
+        -m ~/.cache/ivit/models/resnet50.onnx \
         -i examples/data/images/bus.jpg \
         -d npu -b -n 100
 """
