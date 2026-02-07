@@ -91,6 +91,13 @@ if(IVIT_USE_OPENVINO)
         message(STATUS "OpenVINO found: ${OpenVINO_VERSION}")
         add_compile_definitions(IVIT_HAS_OPENVINO)
 
+        # 修正 ABI 設定：pip OpenVINO 使用舊 ABI，但系統 OpenCV 使用新 ABI
+        # 強制使用新 ABI (C++11) 以與 OpenCV 相容
+        # 注意：這要求 OpenVINO 能容忍 ABI 不匹配（通常可以，因為介面不直接傳遞 std::string）
+        remove_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+        add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=1)
+        message(STATUS "Forcing _GLIBCXX_USE_CXX11_ABI=1 for OpenCV compatibility")
+
         # 收集需要打包的庫
         if(IVIT_BUNDLE_DEPS)
             get_target_property(OV_LIB_LOCATION openvino::runtime LOCATION)

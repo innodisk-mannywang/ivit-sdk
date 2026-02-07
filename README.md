@@ -8,363 +8,105 @@
 
 ## 概述
 
-iVIT-SDK 是宜鼎國際開發的統一電腦視覺 SDK，提供跨硬體平台的一致性 API 介面。無論您使用的是 Intel 還是 NVIDIA 的硬體，都可以使用相同的程式碼進行開發（Qualcomm 支援規劃中）。
+iVIT-SDK 是宜鼎國際開發的統一電腦視覺 SDK，提供跨硬體平台的一致性 API 介面。無論您使用的是 Intel 還是 NVIDIA 的硬體，都可以使用相同的程式碼進行開發。
 
 ### 特色
 
 - **統一 API** - 一套程式碼，支援多種硬體平台
-- **多後端支援** - Intel OpenVINO、NVIDIA TensorRT、Qualcomm QNN (IQ Series) [規劃中]
+- **多後端支援** - Intel OpenVINO、NVIDIA TensorRT、Qualcomm QNN [規劃中]
 - **完整視覺任務** - 分類、物件偵測、語意分割、姿態估計
 - **遷移式學習** - 支援模型微調和訓練
 - **雙語言支援** - Python 和 C++ API
-- **自動裝置選擇** - 智慧型硬體偵測與最佳化
 
 ## 硬體支援
 
-| 廠商 | 硬體類型 | 後端 | 架構 |
-|------|---------|------|------|
-| Intel | CPU、iGPU、NPU、VPU | OpenVINO | x86_64、ARM64 |
-| NVIDIA | GPU (dGPU、Jetson) | TensorRT | x86_64、ARM64 |
-| Qualcomm | IQ9/IQ8/IQ6 (Hexagon NPU) | QNN (規劃中) | ARM64 |
-
-### Qualcomm IQ Series 支援 (規劃中)
-
-> **注意**：Qualcomm IQ Series 支援目前為規劃中功能，尚未正式提供。以下資訊為未來規劃參考。
-
-| 系列 | 晶片 | AI 效能 | 裝置代號 |
-|------|------|---------|---------|
-| IQ9 | QCS9075 | 100 TOPS | `iq9` |
-| IQ8 | QCS8550 | 48 TOPS | `iq8` |
-| IQ6 | QCS6490 | 15 TOPS | `iq6` |
-
-> **可擴展架構**：SDK 設計支援動態新增硬體平台。詳見 [新增硬體平台指南](docs/hardware-extension.md)。
+| 廠商 | 硬體類型 | 後端 |
+|------|---------|------|
+| Intel | CPU、iGPU、NPU | OpenVINO |
+| NVIDIA | dGPU、Jetson | TensorRT |
+| Qualcomm | IQ9/IQ8/IQ6 | QNN [規劃中] |
 
 ## 安裝
 
-### 使用 pip 安裝
-
 ```bash
-# 基本安裝
+# pip 安裝
 pip install ivit-sdk
 
-# 安裝特定後端支援
-pip install ivit-sdk[openvino]     # Intel OpenVINO
-pip install ivit-sdk[tensorrt]     # NVIDIA TensorRT (需先安裝 CUDA)
-
-# 安裝 Model Zoo 支援（自動下載和轉換模型）
-pip install ivit-sdk[zoo]
-
-# 安裝全部功能 (Intel + Zoo + 訓練 + 開發工具)
-pip install ivit-sdk[all]
-
-# NVIDIA CUDA 完整支援
-pip install ivit-sdk[cuda]
-```
-
-> **注意**: QNN 後端需要安裝 [Qualcomm AI Engine Direct SDK](https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk)。
-
-### 從原始碼建置
-
-```bash
-# Clone 專案
+# 從原始碼建置
 git clone https://github.com/innodisk-mannywang/ivit-sdk.git
 cd ivit-sdk
-
-# 下載 C++ 後端依賴庫（OpenVINO）
-./scripts/download_deps.sh
-
-# 建立建置目錄
 mkdir build && cd build
-
-# 設定 CMake（使用下載的依賴庫）
-cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DIVIT_BUNDLE_DEPS=ON \
-    -DIVIT_BUILD_PYTHON=ON
-
-# 建置
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
-
-# 安裝（可選）
-sudo make install
 ```
 
-> **注意**：TensorRT 需從 [NVIDIA Developer](https://developer.nvidia.com/tensorrt) 手動下載。詳見 [Getting Started](docs/getting-started.md)。
-
-### Python 開發模式安裝
-
-```bash
-pip install -e .
-
-# (選用) 安裝 Model Zoo 支援（自動下載和轉換模型）
-pip install -e ".[zoo]"
-# 或直接安裝: pip install ultralytics
-```
+> 完整環境設定（OpenVINO APT 安裝、TensorRT、Python 綁定等）請參考 **[Getting Started Guide](docs/getting-started.md#環境安裝)**
 
 ## 快速開始
 
-### Python 範例
+### Python
 
 ```python
 import ivit
 
-# 列出可用裝置
-print("Available devices:")
-ivit.devices()  # 顯示裝置列表
+# 物件偵測
+detector = ivit.Detector("yolov8n.onnx", device="npu")
+results = detector.predict("image.jpg")
 
-# 自動選擇最佳裝置
-best = ivit.devices.best()
-print(f"Best device: {best.name} ({best.backend})")
-
-# 載入模型（Ultralytics 風格）
-model = ivit.load("yolov8n.onnx", device=best)
-
-# 執行推論
-results = model("image.jpg")
-
-# 處理結果
-print(f"Found {len(results)} objects")
-for det in results:
+for det in results.detections:
     print(f"{det.label}: {det.confidence:.2%}")
-    print(f"  BBox: ({det.bbox.x1}, {det.bbox.y1}) - ({det.bbox.x2}, {det.bbox.y2})")
-
-# 視覺化結果
-results.show()
-results.save("output.jpg")
 ```
 
-### C++ 範例
+### C++
 
 ```cpp
-#include <ivit/ivit.hpp>
-#include <opencv2/opencv.hpp>
+#include "ivit/vision/detector.hpp"
 
-int main() {
-    // 列出可用裝置
-    auto devices = ivit::list_devices();
-    for (const auto& dev : devices) {
-        std::cout << dev.name << " (" << dev.backend << ")" << std::endl;
-    }
+Detector detector("yolov8n.onnx", "npu");
+auto results = detector.predict(image, 0.5f);
 
-    // 自動選擇最佳裝置
-    auto best_device = ivit::get_best_device();
-
-    // 載入模型
-    ivit::LoadConfig config;
-    config.device = best_device.id;
-    auto model = ivit::load_model("yolov8n.onnx", config);
-
-    // 載入影像並推論
-    cv::Mat image = cv::imread("image.jpg");
-    auto results = model->predict(image);
-
-    // 處理結果
-    for (const auto& det : results.detections) {
-        std::cout << det.label << ": " << det.confidence << std::endl;
-    }
-
-    // 儲存結果
-    cv::imwrite("output.jpg", image);
-
-    return 0;
+for (const auto& det : results.detections) {
+    std::cout << det.label << ": " << det.confidence << std::endl;
 }
 ```
 
+> 更多範例請參考 **[Getting Started Guide](docs/getting-started.md#快速開始)**
+
 ## 支援的模型
 
-### 分類 (Classification)
-- EfficientNet (B0-B7)
-- MobileNet V2/V3
-- ResNet (18/34/50/101/152)
-- VGG (16/19)
-
-### 物件偵測 (Object Detection)
-- YOLOv5 (n/s/m/l/x)
-- YOLOv8 (n/s/m/l/x)
-- SSD MobileNet
-- Faster R-CNN
-
-### 語意分割 (Semantic Segmentation)
-- DeepLab V3+
-- U-Net
-- SegFormer
-
-### 姿態估計 (Pose Estimation)
-- YOLOv8-Pose
-- HRNet
-- OpenPose
-
-### 臉部分析 (Face Analysis)
-- RetinaFace (偵測)
-- ArcFace (辨識)
-- Face Landmark
-
-## 專案結構
-
-```
-ivit-sdk/
-├── include/ivit/          # C++ 標頭檔
-│   ├── core/              # 核心元件
-│   ├── vision/            # 視覺任務
-│   ├── runtime/           # 推論執行時期
-│   └── utils/             # 工具函式
-├── src/                   # C++ 原始碼
-├── python/ivit/           # Python 套件
-│   ├── core/              # 核心模組
-│   ├── vision/            # 視覺模組
-│   ├── runtime/           # 執行時期模組
-│   └── utils/             # 工具模組
-├── tests/                 # 測試程式碼
-├── examples/              # 範例程式
-├── docs/                  # 文件
-│   ├── PRD/               # 產品需求文件
-│   ├── architecture/      # 架構文件
-│   └── api/               # API 規格
-└── models/                # 預訓練模型
-```
-
-## 範例程式
-
-### 基本範例
-
-編譯後可使用以下範例程式：
-
-```bash
-# 列出可用裝置
-./simple_inference devices
-
-# 物件偵測
-./simple_inference detect yolov8n.onnx image.jpg cuda:0 output.jpg
-
-# 影像分類
-./simple_inference classify resnet50.onnx cat.jpg cpu
-
-# 語意分割
-./simple_inference segment deeplabv3.onnx scene.jpg gpu:0 segmented.jpg
-
-# 效能測試
-./simple_inference benchmark yolov8n.onnx cuda:0 100
-
-# 即時影片偵測
-./video_demo yolov8n.onnx 0 cuda:0  # 使用攝影機 0
-```
-
-### 開發範例
-
-#### 基本範例 (`examples/python/`)
-
-| 範例 | 說明 |
+| 任務 | 模型 |
 |------|------|
-| `01_quickstart.py` | 快速入門（直接執行即可） |
-| `02_detection.py` | 物件偵測（支援參數設定、效能測試） |
-| `02_classification.py` | 影像分類 |
-
-```bash
-# 快速入門
-python examples/python/01_quickstart.py
-
-# 物件偵測（指定裝置和參數）
-python examples/python/02_detection.py \
-    -m models/onnx/yolov8n.onnx \
-    -i examples/data/images/bus.jpg \
-    -d cuda:0
-
-# 物件偵測（效能測試模式）
-python examples/python/02_detection.py \
-    -m models/onnx/yolov8n.onnx \
-    -i examples/data/images/bus.jpg \
-    -d cuda:0 -b -n 100
-```
-
-#### 進階範例 (`examples/python/advanced/`)
-
-針對不同角色的開發者提供專屬範例：
-
-| 範例 | 對象 | 說明 |
-|------|------|------|
-| `si_quickstart.py` | 系統整合商 | 裝置探索、錯誤處理、JSON 輸出 |
-| `ai_developer_training.py` | AI 應用開發者 | 遷移式學習、模型訓練、匯出 |
-| `embedded_optimization.py` | 嵌入式工程師 | Runtime 配置、效能測試 |
-| `backend_service.py` | 後端工程師 | Callback 監控、REST API 服務 |
-| `data_analysis.py` | 資料科學家 | 結果分析、批次處理 |
-
-```bash
-# 系統整合商：快速整合
-python examples/python/advanced/si_quickstart.py --image test.jpg
-
-# 嵌入式工程師：效能優化
-python examples/python/advanced/embedded_optimization.py --benchmark --iterations 100
-```
-
-#### C++ 範例 (`examples/cpp/`)
-
-| 範例 | 對象 | 說明 |
-|------|------|------|
-| `si_quickstart.cpp` | 系統整合商 | 裝置探索、錯誤處理、JSON 序列化 |
-| `embedded_optimization.cpp` | 嵌入式工程師 | Runtime 配置、Benchmark、自訂前處理器 |
-| `backend_service.cpp` | 後端工程師 | Callback 系統、FPS/延遲監控 |
-| `data_analysis.cpp` | 資料科學家 | 結果分析、批次處理、統計 |
-
-```bash
-# 建置範例
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-# 系統整合商：快速整合
-./si_quickstart image.jpg model.onnx
-
-# 嵌入式工程師：效能優化
-./embedded_optimization model.onnx --device cuda:0 --benchmark --iterations 100
-
-# 後端工程師：服務監控示範
-./backend_service model.onnx --device cuda:0 --demo
-
-# 資料科學家：結果分析
-./data_analysis model.onnx image.jpg --batch
-```
-
-> **Note**: C++ 範例不包含訓練功能，因為訓練主要依賴 PyTorch 生態系統 (Python)。C++ 專注於推論與部署優化。
+| 分類 | ResNet、EfficientNet、MobileNet |
+| 物件偵測 | YOLOv5/v8、SSD、Faster R-CNN |
+| 語意分割 | DeepLabV3、U-Net、SegFormer |
+| 姿態估計 | YOLOv8-Pose、HRNet |
+| 人臉分析 | RetinaFace、ArcFace |
 
 ## 文件
 
-- [快速入門指南](docs/getting-started.md)
-- [產品需求文件 (PRD)](docs/development/prd.md)
-- [系統架構設計](docs/architecture/adr-001-system.md)
-- [API 規格](docs/api/api-spec.md)
+| 文件 | 說明 |
+|------|------|
+| **[Getting Started Guide](docs/getting-started.md)** | 環境安裝、編譯、API 使用、效能優化 |
+| [API 規格](docs/api/api-spec.md) | 完整 API 參考 |
+| [系統架構](docs/architecture/adr-001-system.md) | 架構設計文件 |
+| [PRD](docs/development/prd.md) | 產品需求文件 |
 
 ## 開發
 
-### 執行測試
-
 ```bash
-# Python 測試
+# 測試
 pytest tests/python -v
+ctest --test-dir build
 
-# C++ 測試
-cd build
-ctest -V
-```
-
-### 程式碼風格
-
-```bash
-# Python
+# 程式碼風格
 black python/
-isort python/
-
-# C++
 clang-format -i src/**/*.cpp include/**/*.hpp
 ```
 
 ## 授權
 
-本專案採用 [Apache License 2.0](LICENSE) 授權。
-
-## 關於宜鼎
-
-[宜鼎國際](https://www.innodisk.com) 是全球領先的工業級儲存和嵌入式周邊解決方案供應商，致力於提供高品質的 AI 運算平台和解決方案。
+[Apache License 2.0](LICENSE)
 
 ---
 
-Copyright (c) 2024 Innodisk Corporation. All rights reserved.
+Copyright (c) 2024 [宜鼎國際](https://www.innodisk.com). All rights reserved.
